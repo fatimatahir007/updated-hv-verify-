@@ -1,12 +1,38 @@
-.vscode-server/
-node_modules/
-dist/
+# Python virtual environments
 venv/
 backend/venv/
-.env
-.env.local
-*.db
-hc_verify.db
-test_sqlite.db
+.venv/
+
+# Backend Python environment folders
+backend/Lib/
+backend/Scripts/
+backend/Include/
+backend/pyvenv.cfg
+
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
+
+# Environment variables
+.env
+*.env
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Node dependencies
+node_modules/
+frontend/node_modules/
+
+# Build files
+dist/
+build/
+
+# VS Code
+.vscode/
+
+# Operating system files
+.DS_Store
+Thumbs.db
