@@ -43,12 +43,14 @@ async def cast_vote(
     elections = elections_res.scalars().all()
     active_election_exists = False
     active_election_id = None
-    now = datetime.now(timezone.utc)
+    # Use current aware local time
+    now = datetime.now().astimezone()
     for e in elections:
-        start_time = e.date if e.date.tzinfo else e.date.replace(tzinfo=timezone.utc)
+        # If the database returns naive, treat it as local time
+        start_time = e.date if e.date.tzinfo else e.date.astimezone()
         if now >= start_time:
             if e.end_time:
-                end_time = e.end_time if e.end_time.tzinfo else e.end_time.replace(tzinfo=timezone.utc)
+                end_time = e.end_time if e.end_time.tzinfo else e.end_time.astimezone()
                 if now <= end_time:
                     active_election_exists = True
                     active_election_id = e.election_id
@@ -204,6 +206,16 @@ async def cast_vote(
         )
     )
 
+    # Resolve polling station
+    polling_station_uuid = None
+    if hasattr(vote, 'polling_station_id') and vote.polling_station_id:
+        try:
+            polling_station_uuid = uuid.UUID(str(vote.polling_station_id))
+        except Exception:
+            pass
+    if not polling_station_uuid:
+        polling_station_uuid = voter.polling_station_id
+
     # Save vote
 
     new_vote = Vote(
@@ -213,7 +225,9 @@ async def cast_vote(
         vote_hash=calculate_vote_hash(str(voter.voter_id), str(candidate.candidate_id), receipt_code),
         blockchain_hash=blockchain_hash,
         election_id=active_election_id,
-        timestamp=datetime.utcnow()
+        timestamp=datetime.utcnow(),
+        station_id=polling_station_uuid,
+        district_id=voter.district_id
     )
 
     db.add(new_vote)

@@ -47,8 +47,29 @@ function RegisterPage() {
     full_name: "",
     cnic: "",
     phone: "",
-    constituency: ""
+    constituency: "",
+    polling_station_id: ""
   });
+
+  const [districtsList, setDistrictsList] = useState([]);
+  const [pollingStationsList, setPollingStationsList] = useState([]);
+  const [filteredPollingStations, setFilteredPollingStations] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [distRes, stationRes] = await Promise.all([
+          API.get("/public/districts"),
+          API.get("/public/polling-stations")
+        ]);
+        setDistrictsList(distRes.data || []);
+        setPollingStationsList(stationRes.data || []);
+      } catch (err) {
+        console.error("Error loading districts/stations", err);
+      }
+    };
+    fetchData();
+  }, []);
 
   const [loading, setLoading] = useState(false);
 
@@ -441,8 +462,14 @@ function RegisterPage() {
     }
 
     if (name === "constituency") {
-      const alphabetsOnly = value.replace(/[^A-Za-z\s]/g, "");
-      setFormData({ ...formData, constituency: alphabetsOnly });
+      const selectedDistrict = districtsList.find(d => d.district_name === value);
+      if (selectedDistrict) {
+        const filtered = pollingStationsList.filter(ps => ps.district_id === selectedDistrict.district_id);
+        setFilteredPollingStations(filtered);
+      } else {
+        setFilteredPollingStations([]);
+      }
+      setFormData(prev => ({ ...prev, constituency: value, polling_station_id: "" }));
       return;
     }
 
@@ -629,19 +656,50 @@ function RegisterPage() {
             </div>
 
             <div className="form-group">
-              <label className="form-label">Constituency</label>
+              <label className="form-label">Constituency / District</label>
               <div className="input-wrap">
                 <MapPin size={16} />
-                <input
-                  type="text"
+                <select
                   name="constituency"
                   className="input"
-                  placeholder={t.constituencyPlaceholder}
                   value={formData.constituency}
                   onChange={handleChange}
-                />
+                  required
+                >
+                  <option value="">Select your district...</option>
+                  {districtsList.map(d => (
+                    <option key={d.district_id} value={d.district_name}>{d.district_name}</option>
+                  ))}
+                </select>
               </div>
               <p className="helper-text">{t.constituencyHelper}</p>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Polling Station</label>
+              <div className="input-wrap">
+                <MapPin size={16} />
+                <select
+                  name="polling_station_id"
+                  className="input"
+                  value={formData.polling_station_id}
+                  onChange={e => setFormData(prev => ({ ...prev, polling_station_id: e.target.value }))}
+                  required
+                  disabled={!formData.constituency}
+                >
+                  <option value="">
+                    {!formData.constituency 
+                      ? "Select constituency first..." 
+                      : filteredPollingStations.length === 0 
+                        ? "No polling stations in this district..." 
+                        : "Select polling station..."}
+                  </option>
+                  {filteredPollingStations.map(ps => (
+                    <option key={ps.station_id} value={ps.station_id}>{ps.station_name} ({ps.station_code})</option>
+                  ))}
+                </select>
+              </div>
+              <p className="helper-text">Select the polling station where you will cast your vote.</p>
             </div>
 
           </div>

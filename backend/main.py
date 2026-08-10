@@ -418,6 +418,19 @@ async def register_voter(
         if not jwt_voter.district:
             jwt_voter.district = voter.constituency or "General"
         
+        # Resolve district_id from constituency name
+        if voter.constituency:
+            res_d = await db.execute(select(District).where(func.lower(District.district_name) == voter.constituency.lower().strip()))
+            d_obj = res_d.scalars().first()
+            if d_obj:
+                jwt_voter.district_id = d_obj.district_id
+        
+        if voter.polling_station_id:
+            try:
+                jwt_voter.polling_station_id = uuid.UUID(str(voter.polling_station_id))
+            except Exception:
+                pass
+        
         jwt_voter.registration_hash = calculate_registration_hash(
             jwt_voter.voter_id,
             jwt_voter.cnic,
@@ -431,17 +444,19 @@ async def register_voter(
         }
 
     # Prevent duplicate CNIC or identical identity data
-    existing = await db.execute(
-        select(Voter).where(
-            Voter.bar_number == voter.cnic
+    try:
+        existing = await db.execute(
+            select(Voter.voter_id, Voter.has_voted).where(
+                Voter.bar_number == voter.cnic
+            )
         )
-    )
+        existing_row = existing.first()
+    except Exception as e:
+        return {"success": False, "message": f"DB Error 1: {str(e)}"}
 
-    existing_voter = existing.scalars().first()
+    if existing_row:
 
-    if existing_voter:
-
-        if existing_voter.has_voted:
+        if existing_row.has_voted:
 
             return {
 
@@ -456,23 +471,24 @@ async def register_voter(
 
             "message": "Voter ID recovered",
 
-            "voter_id": str(existing_voter.voter_id)
+            "voter_id": str(existing_row.voter_id)
         }
 
-    duplicate_identity = await db.execute(
-
-        select(Voter).where(
-            Voter.name_hash == voter.full_name,
-            Voter.commitment_hash == voter.phone,
-            Voter.qr_hash == voter.constituency
+    try:
+        duplicate_identity = await db.execute(
+            select(Voter.voter_id, Voter.has_voted).where(
+                Voter.name_hash == voter.full_name,
+                Voter.commitment_hash == voter.phone,
+                Voter.qr_hash == voter.constituency
+            )
         )
-    )
+        duplicate_row = duplicate_identity.first()
+    except Exception as e:
+        return {"success": False, "message": f"DB Error 2: {str(e)}"}
 
-    duplicate_voter = duplicate_identity.scalars().first()
+    if duplicate_row:
 
-    if duplicate_voter:
-
-        if duplicate_voter.has_voted:
+        if duplicate_row.has_voted:
 
             return {
 
@@ -487,28 +503,37 @@ async def register_voter(
 
             "message": "Voter ID recovered",
 
-            "voter_id": str(duplicate_voter.voter_id)
+            "voter_id": str(duplicate_row.voter_id)
         }
 
     # Generate voter ID
-
     voter_id = uuid.uuid4()
 
+    polling_station_uuid = None
+    if voter.polling_station_id:
+        try:
+            polling_station_uuid = uuid.UUID(str(voter.polling_station_id))
+        except Exception:
+            pass
+
+    district_uuid = None
+    if voter.constituency:
+        res_d = await db.execute(select(District).where(func.lower(District.district_name) == voter.constituency.lower().strip()))
+        d_obj = res_d.scalars().first()
+        if d_obj:
+            district_uuid = d_obj.district_id
+
     # Create voter
-
     new_voter = Voter(
-
         voter_id=voter_id,
-
         full_name=voter.full_name,
-
         cnic=voter.cnic,
-
         phone=voter.phone,
-
         constituency=voter.constituency,
         district=voter.constituency or "General",
-        password=""
+        password="",
+        polling_station_id=polling_station_uuid,
+        district_id=district_uuid
     )
 
     new_voter.registration_hash = calculate_registration_hash(
@@ -517,9 +542,12 @@ async def register_voter(
         new_voter.full_name
     )
 
-    db.add(new_voter)
-
-    await db.commit()
+    try:
+        db.add(new_voter)
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        return {"success": False, "message": f"DB Insert Error: {str(e)}"}
 
     return {
 
@@ -1375,6 +1403,31 @@ async def get_public_elections(db: AsyncSession = Depends(get_db)):
             "status": status
         })
     return out
+
+@app.get("/public/districts")
+async def get_public_districts(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(District).order_by(District.district_name.asc()))
+    return [
+        {
+            "district_id": str(d.district_id),
+            "district_name": d.district_name
+        }
+        for d in result.scalars().all()
+    ]
+
+@app.get("/public/polling-stations")
+async def get_public_polling_stations(db: AsyncSession = Depends(get_db)):
+    from app.models import PollingStation
+    result = await db.execute(select(PollingStation).order_by(PollingStation.station_name.asc()))
+    return [
+        {
+            "station_id": str(s.station_id),
+            "station_name": s.station_name,
+            "station_code": s.station_code,
+            "district_id": str(s.district_id) if s.district_id else None
+        }
+        for s in result.scalars().all()
+    ]
 
 @app.get("/public/votes")
 async def get_public_votes(

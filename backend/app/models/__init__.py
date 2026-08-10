@@ -271,6 +271,7 @@ class Election(Base):
     end_time = Column(DateTime(timezone=True), nullable=True)
 
     status = Column(String(50), default="Upcoming")
+    polling_station_id = Column('polling_station_id', Uuid, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),

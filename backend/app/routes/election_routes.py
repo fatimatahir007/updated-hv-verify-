@@ -19,6 +19,7 @@ class ElectionCreate(BaseModel):
     date: datetime
     end_time: Optional[datetime] = None
     status: str = "Upcoming"
+    polling_station_id: Optional[str] = None
 
 
 class ElectionResponse(BaseModel):
@@ -27,6 +28,7 @@ class ElectionResponse(BaseModel):
     date: datetime
     end_time: Optional[datetime] = None
     status: str
+    polling_station_id: Optional[uuid.UUID] = None
     created_at: Optional[datetime]
 
     class Config:
@@ -36,14 +38,17 @@ class ElectionResponse(BaseModel):
 from datetime import timezone
 
 def _compute_status(election: Election) -> str:
-    now = datetime.now(timezone.utc)
-    # Ensure start_time and end_time are timezone-aware if they aren't
-    start_time = election.date if election.date.tzinfo else election.date.replace(tzinfo=timezone.utc)
+    # Use current aware local time
+    now = datetime.now().astimezone()
+    
+    # If the database returns naive, treat it as local time
+    start_time = election.date if election.date.tzinfo else election.date.astimezone()
+    
     if now < start_time:
         return "Upcoming"
     
     if election.end_time:
-        end_time = election.end_time if election.end_time.tzinfo else election.end_time.replace(tzinfo=timezone.utc)
+        end_time = election.end_time if election.end_time.tzinfo else election.end_time.astimezone()
         if now > end_time:
             return "Closed"
             
@@ -90,6 +95,7 @@ async def create_election(payload: ElectionCreate, db: AsyncSession = Depends(ge
         date=payload.date,
         end_time=payload.end_time,
         status="Upcoming", # Will be computed dynamically on GET
+        polling_station_id=uuid.UUID(payload.polling_station_id) if payload.polling_station_id else None
     )
     
     try:
@@ -111,6 +117,7 @@ async def create_election(payload: ElectionCreate, db: AsyncSession = Depends(ge
             date=payload.date,
             end_time=payload.end_time,
             status="Upcoming",
+            polling_station_id=uuid.UUID(payload.polling_station_id) if payload.polling_station_id else None
         )
         db.add(new_election)
         await db.commit()
@@ -127,5 +134,33 @@ async def delete_election(election_id: uuid.UUID, db: AsyncSession = Depends(get
     election = result.scalars().first()
     if not election:
         raise HTTPException(status_code=404, detail="Election not found")
+        
+    # Delete related votes
+    from app.models import Vote, Candidate
+    await db.execute(Vote.__table__.delete().where(Vote.election_id == election_id))
+    
+    # Delete related candidates
+    await db.execute(Candidate.__table__.delete().where(Candidate.election_id == election_id))
+    
+    # Delete the election
     await db.delete(election)
     await db.commit()
+
+@router.put("/{election_id}/start-now", response_model=ElectionResponse)
+async def start_election_now(election_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    """Manually start an election by setting its start date to now."""
+    result = await db.execute(select(Election).where(Election.election_id == election_id))
+    election = result.scalars().first()
+    if not election:
+        raise HTTPException(status_code=404, detail="Election not found")
+    
+    # Set the start time to now so the dynamic logic considers it Active
+    now = datetime.now(timezone.utc)
+    election.date = now
+    
+    db.add(election)
+    await db.commit()
+    await db.refresh(election)
+    
+    election.status = _compute_status(election)
+    return election

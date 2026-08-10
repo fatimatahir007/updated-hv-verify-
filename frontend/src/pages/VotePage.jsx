@@ -6,7 +6,10 @@ import {
   Vote as VoteIcon,
   ArrowRight,
   CheckCircle2,
-  Calendar
+  Calendar,
+  KeyRound,
+  IdCard,
+  MapPin
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -47,12 +50,78 @@ function VotePage() {
     location.state?.voterId || ""
   );
 
+  const [pollingStationsList, setPollingStationsList] = useState([]);
+  const [districtsList, setDistrictsList] = useState([]);
+  const [filteredPollingStations, setFilteredPollingStations] = useState([]);
+  const [selectedStationId, setSelectedStationId] = useState("");
+
+  useEffect(() => {
+    const fetchStationsAndDistricts = async () => {
+      try {
+        const [stationRes, distRes] = await Promise.all([
+          API.get("/public/polling-stations"),
+          API.get("/public/districts")
+        ]);
+        setPollingStationsList(stationRes.data || []);
+        setDistrictsList(distRes.data || []);
+      } catch (err) {
+        console.error("Error fetching stations/districts", err);
+      }
+    };
+    fetchStationsAndDistricts();
+  }, []);
+
+  useEffect(() => {
+    const userDistrictId = voter?.district_id;
+    const userDistrictName = voter?.district || location.state?.voterDistrict;
+    
+    let matchedDistrictId = userDistrictId;
+    if (!matchedDistrictId && userDistrictName) {
+      const found = districtsList.find(d => d.district_name.toLowerCase() === userDistrictName.toLowerCase());
+      if (found) matchedDistrictId = found.district_id;
+    }
+    
+    if (matchedDistrictId) {
+      const filtered = pollingStationsList.filter(ps => ps.district_id === matchedDistrictId);
+      setFilteredPollingStations(filtered);
+    } else {
+      setFilteredPollingStations([]);
+    }
+  }, [voter, districtsList, pollingStationsList, location.state?.voterDistrict]);
+
+  useEffect(() => {
+    if (voter?.polling_station_id) {
+      setSelectedStationId(voter.polling_station_id);
+    }
+  }, [voter]);
+
   const [districtModal, setDistrictModal] = useState({
     open: false,
     candidate: null,
     voterDistrict: "",
     candidateDistrict: ""
   });
+
+  const [loginForm, setLoginForm] = useState({ identifier: "", password: "" });
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    try {
+      const response = await API.post("/auth/login", {
+        identifier: loginForm.identifier,
+        password: loginForm.password
+      });
+      toast.success("Login successful!");
+      localStorage.setItem("voterToken", response.data.access_token);
+      navigate("/register");
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid email, CNIC, or password");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchElections = async () => {
@@ -137,9 +206,9 @@ function VotePage() {
       // if (targetVoterId) {
       //   queryParams.push(`voter_id=${encodeURIComponent(targetVoterId)}`);
       // }
-      // if (electionId) {
-      //   queryParams.push(`election_id=${encodeURIComponent(electionId)}`);
-      // }
+      if (electionId) {
+        queryParams.push(`election_id=${encodeURIComponent(electionId)}`);
+      }
       if (queryParams.length > 0) {
         url += "?" + queryParams.join("&");
       }
@@ -183,9 +252,10 @@ function VotePage() {
         return;
       }
 
+
       const votePayload = {
         candidate_id: resolvedCandidateId,
-        voter_id: directVoterId || voter?.voter_id
+        voter_id: directVoterId || voter?.voter_id,
       };
 
       const response = await API.post(
@@ -292,15 +362,28 @@ function VotePage() {
               </div>
             </div>
 
-            <div className="form-actions" style={{ marginTop: 16 }}>
+            <div className="form-actions" style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
               <button
                 className={`button${copyState.loading ? " is-loading" : ""}`}
                 onClick={handleCopyReceipt}
+                style={{ flex: 1 }}
               >
                 {copyState.loading ? "Copying..." : copyState.success ? "Copied! Redirecting..." : "Copy verification code"}
               </button>
+              
+              <button
+                className="button secondary"
+                onClick={() => {
+                  localStorage.removeItem("voterToken");
+                  navigate("/auth");
+                  window.location.reload();
+                }}
+                style={{ flex: 1 }}
+              >
+                Register/Login Next Voter
+              </button>
 
-              <span className="form-hint">
+              <span className="form-hint" style={{ width: "100%" }}>
                 Copy your verification code to verify your vote on the public ledger.
               </span>
             </div>
@@ -355,6 +438,13 @@ function VotePage() {
             </button>
             <button className="button secondary" onClick={() => navigate("/results")}>
               View Election Results
+            </button>
+            <button className="button" style={{ backgroundColor: "#0f766e", color: "white" }} onClick={() => {
+              localStorage.removeItem("voterToken");
+              navigate("/auth");
+              window.location.reload();
+            }}>
+              Register/Login Next Voter
             </button>
           </div>
         </div>
@@ -441,12 +531,12 @@ function VotePage() {
             <p className="helper-text" style={{ marginBottom: 24 }}>
               There are currently no active candidates registered for your district. Please check back shortly or select another district.
             </p>
-            <button className="button" onClick={() => loadCandidates(voter?.district || location.state?.voterDistrict, directVoterId)}>
+            <button className="button" onClick={() => loadCandidates(voter?.district || location.state?.voterDistrict, directVoterId, activeElection?.election_id)}>
               Refresh Candidates
             </button>
           </div>
         ) : (
-          <div className="candidate-grid">
+          <>            <div className="candidate-grid">
             {candidates.map((candidate) => (
               <div key={candidate.id || candidate.candidate_id} className="candidate-card">
                 <div className="candidate-symbol">{candidate.symbol || candidate.symbol_name || "🗳️"}</div>
@@ -476,6 +566,7 @@ function VotePage() {
               </div>
             ))}
           </div>
+          </>
         )}
 
         {districtModal.open && districtModal.candidate && (
@@ -537,9 +628,7 @@ function VotePage() {
   // =====================================
 
   return (
-
     <div className="page">
-
       <div className="page-header">
         <div className="eyebrow">
           <ShieldCheck size={16} />
@@ -553,32 +642,58 @@ function VotePage() {
         </p>
       </div>
 
-
       <div className="card form-card">
-        <p className="helper-text" style={{ marginBottom: 16 }}>
-          You need an active voter session to continue.
-        </p>
-
-        <div className="form-actions">
-          <button
-            className="button"
-            onClick={authenticate}
-          >
-            Go to login
-            <BadgeCheck size={16} />
-          </button>
-        </div>
-
-        {voter && (
-          <div className="admin-list" style={{ marginTop: 18 }}>
-            <div className="admin-row"><span>Name</span><strong>{voter.full_name}</strong></div>
-            <div className="admin-row"><span>Email</span><strong>{voter.email}</strong></div>
-            <div className="admin-row"><span>District</span><strong>{voter.district || "-"}</strong></div>
+        <form className="form-grid" onSubmit={handleLoginSubmit}>
+          <div className="form-group">
+            <label className="form-label">Email or CNIC</label>
+            <div className="input-wrap">
+              <IdCard size={16} />
+              <input 
+                type="text" 
+                className="input" 
+                placeholder="Enter email or 13-digit CNIC"
+                value={loginForm.identifier} 
+                onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))} 
+                required 
+              />
+            </div>
           </div>
-        )}
+          
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <div className="input-wrap">
+              <KeyRound size={16} />
+              <input 
+                type="password" 
+                className="input" 
+                placeholder="Enter password"
+                value={loginForm.password} 
+                onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))} 
+                required 
+              />
+            </div>
+          </div>
 
+          <div className="form-actions" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+            <button 
+              className={`button${loginLoading ? " is-loading" : ""}`} 
+              type="submit"
+              disabled={loginLoading}
+              style={{ flex: 1 }}
+            >
+              {loginLoading ? "Signing in..." : "Enter Voting Booth"}
+            </button>
+            <button 
+              className="button secondary" 
+              type="button"
+              onClick={() => navigate("/auth")}
+              style={{ flex: 1 }}
+            >
+              Register Account
+            </button>
+          </div>
+        </form>
       </div>
-
     </div>
   );
 }

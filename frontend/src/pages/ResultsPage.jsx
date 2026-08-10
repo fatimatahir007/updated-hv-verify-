@@ -11,16 +11,45 @@ import {
 import API from "../api";
 
 function ResultsPage() {
+  const [elections, setElections] = useState([]);
+  const [selectedElectionId, setSelectedElectionId] = useState("");
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
-    const loadResults = async () => {
+    const fetchElections = async () => {
       try {
         const token = localStorage.getItem("adminToken") || localStorage.getItem("voterToken");
         const headers = token ? { Authorization: `Bearer ${token}` } : {};
-        const resultsRes = await API.get("/results", { headers }).catch(() => API.get("/candidates", { headers }));
+        const res = await API.get("/public/elections", { headers });
+        const list = res.data || [];
+        setElections(list);
+        if (list.length > 0) {
+          const active = list.find(e => e.status === "Active");
+          setSelectedElectionId(active ? active.election_id : list[0].election_id);
+        } else {
+          setIsLoading(false); // No elections to load results for
+        }
+      } catch (error) {
+        console.error("Elections load error:", error);
+        setIsLoading(false);
+      }
+    };
+    fetchElections();
+  }, []);
+
+  useEffect(() => {
+    if (!selectedElectionId) return;
+    
+    const loadResults = async () => {
+      setIsLoading(true);
+      try {
+        const token = localStorage.getItem("adminToken") || localStorage.getItem("voterToken");
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
+        const url = `/results?election_id=${encodeURIComponent(selectedElectionId)}`;
+        const fallbackUrl = `/candidates?election_id=${encodeURIComponent(selectedElectionId)}`;
+        const resultsRes = await API.get(url, { headers }).catch(() => API.get(fallbackUrl, { headers }));
         const list = Array.isArray(resultsRes.data) ? resultsRes.data : (resultsRes.data?.records || resultsRes.data?.candidates || resultsRes.data?.items || []);
         const mapped = list.map(c => ({
           ...c,
@@ -43,7 +72,7 @@ function ResultsPage() {
     };
 
     loadResults();
-  }, []);
+  }, [selectedElectionId]);
 
   const totalVotes = results.reduce(
     (sum, item) => sum + item.votes,
@@ -68,9 +97,27 @@ function ResultsPage() {
         <h1 className="section-title">
           Results dashboard
         </h1>
-        <p className="section-subtitle">
+        <p className="section-subtitle" style={{ marginBottom: 16 }}>
           A real-time summary of votes recorded on the public ledger.
         </p>
+        
+        {elections.length > 0 && (
+          <div style={{ maxWidth: 400 }}>
+            <label className="form-label">Select Election</label>
+            <select 
+              className="input" 
+              value={selectedElectionId} 
+              onChange={(e) => setSelectedElectionId(e.target.value)}
+              style={{ backgroundColor: "var(--card-bg)" }}
+            >
+              {elections.map(e => (
+                <option key={e.election_id} value={e.election_id}>
+                  {e.title} ({e.status})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       <div className="results-metrics">

@@ -26,14 +26,31 @@ router = APIRouter()
 
 @router.get("/results")
 async def results(
+    election_id: str = None,
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Candidate))
+    candidate_query = select(Candidate)
+    if election_id:
+        try:
+            eid = uuid.UUID(election_id)
+            candidate_query = candidate_query.where(Candidate.election_id == eid)
+        except Exception:
+            pass
+            
+    result = await db.execute(candidate_query)
     candidates = result.scalars().all()
     
     vote_counts = {}
     try:
-        vote_result = await db.execute(select(Vote))
+        vote_query = select(Vote)
+        if election_id:
+            try:
+                eid = uuid.UUID(election_id)
+                vote_query = vote_query.where(Vote.election_id == eid)
+            except Exception:
+                pass
+                
+        vote_result = await db.execute(vote_query)
         all_votes = vote_result.scalars().all()
         for v in all_votes:
             cid = str(getattr(v, "candidate_id", ""))

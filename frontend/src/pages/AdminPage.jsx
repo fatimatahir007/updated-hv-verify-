@@ -1523,18 +1523,13 @@ function AdminPage() {
 
   const loadDistricts = async () => {
     setDistrictsLoading(true);
-    const fallbacks = [
-      { district_id: '1', district_name: 'aq' },
-      { district_id: '2', district_name: 'kpk' },
-      { district_id: '3', district_name: 'peshawar' }
-    ];
     try {
       const res = await API.get("/admin/districts/");
-      const data = Array.isArray(res.data) && res.data.length > 0 ? res.data : fallbacks;
+      const data = Array.isArray(res.data) ? res.data : [];
       setDistricts(data);
     } catch (err) {
       console.error("Error in loadDistricts:", err);
-      setDistricts(fallbacks);
+      setDistricts([]);
     } finally {
       setDistrictsLoading(false);
     }
@@ -1548,7 +1543,7 @@ function AdminPage() {
       toast.success('District created successfully');
       setDistrictForm({ district_name: '' });
       setShowDistrictForm(false);
-      loadDistricts();
+      await loadDistricts();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to create district');
     } finally {
@@ -1561,7 +1556,7 @@ function AdminPage() {
     try {
       await API.delete(`/admin/districts/${districtId}`);
       toast.success('District deleted');
-      loadDistricts();
+      await loadDistricts();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to delete district');
     }
@@ -1569,17 +1564,13 @@ function AdminPage() {
 
   const loadElections = async () => {
     setElectionsLoading(true);
-    const fallbacks = [
-      { election_id: '1', title: 'General Election 2026', date: '2026-08-15', status: 'Upcoming' },
-      { election_id: '2', title: 'Bar Association Election', date: '2026-07-20', status: 'Active' }
-    ];
     try {
       const res = await API.get("/admin/elections/");
-      const data = Array.isArray(res.data) && res.data.length > 0 ? res.data : fallbacks;
+      const data = Array.isArray(res.data) ? res.data : [];
       setElections(data);
     } catch (err) {
       console.error("Error in loadElections:", err);
-      setElections(fallbacks);
+      setElections([]);
     } finally {
       setElectionsLoading(false);
     }
@@ -1595,15 +1586,31 @@ function AdminPage() {
         date: new Date(electionForm.date).toISOString(),
         end_time: electionForm.end_time ? new Date(electionForm.end_time).toISOString() : null,
       };
-      await API.post("/admin/elections/", payload);
+      const res = await API.post("/admin/elections/", payload);
       toast.success('Election created successfully');
       setElectionForm({ title: '', date: '', end_time: '' });
       setShowElectionForm(false);
-      loadElections();
+      await loadElections();
+      
+      // Auto switch to Candidates tab and select the new election
+      setTab("Candidates");
+      setCandidateForm(prev => ({ ...prev, election_id: res.data.election_id }));
+      toast.success("Now add candidates for the new election!");
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to create election');
     } finally {
       setElectionFormLoading(false);
+    }
+  };
+
+  const handleStartElectionNow = async (electionId) => {
+    if (!window.confirm("Are you sure you want to start this election right now?")) return;
+    try {
+      await API.put(`/admin/elections/${electionId}/start-now`);
+      toast.success("Election started successfully!");
+      await loadElections();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to start election");
     }
   };
 
@@ -1612,7 +1619,7 @@ function AdminPage() {
     try {
       await API.delete(`/admin/elections/${electionId}`);
       toast.success('Election deleted');
-      loadElections();
+      await loadElections();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to delete election');
     }
@@ -1820,11 +1827,6 @@ function AdminPage() {
     }
   };
   const loadCandidates = async () => {
-    const fallbacks = [
-      { id: '1', name: 'Asif khan', party: 'Student commitee', symbol: 'brick', district: 'peshawar', votes: 12 },
-      { id: '2', name: 'Ayesha Siddiqui', party: 'Pakistan Democratic Front', symbol: 'book', district: 'kpk', votes: 8 },
-      { id: '3', name: 'sahil', party: 'PTI', symbol: 'bat', district: 'peshawar', votes: 15 }
-    ];
     try {
       const res = await API.get("/candidates");
       const list = Array.isArray(res.data) ? res.data : (res.data?.records || res.data?.candidates || res.data?.items || res.data?.data || []);
@@ -1834,10 +1836,10 @@ function AdminPage() {
         name: c.name || c.full_name || c.candidate_name || c.title || "",
         full_name: c.full_name || c.name || c.candidate_name || c.title || ""
       }));
-      setCandidates(mapped.length > 0 ? mapped : fallbacks);
+      setCandidates(mapped);
     } catch (err) {
       console.error("Error in loadCandidates:", err);
-      setCandidates(fallbacks);
+      setCandidates([]);
     }
   };
 
@@ -3442,6 +3444,7 @@ function AdminPage() {
           electionsLoading={electionsLoading}
           elections={elections}
           handleDeleteElection={handleDeleteElection}
+          handleStartElectionNow={handleStartElectionNow}
         />
       )}
 

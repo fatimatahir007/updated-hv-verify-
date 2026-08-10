@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, PlusCircle, RefreshCw, Trash2 } from "lucide-react";
+import { Calendar, PlusCircle, RefreshCw, Trash2, Play } from "lucide-react";
 
 export default function AdminElectionsTab({
   showElectionForm,
@@ -11,8 +11,20 @@ export default function AdminElectionsTab({
   electionFormLoading,
   electionsLoading,
   elections,
-  handleDeleteElection
+  handleDeleteElection,
+  handleStartElectionNow
 }) {
+  const [pollingStations, setPollingStations] = React.useState([]);
+
+  React.useEffect(() => {
+    import('../../services/api').then(mod => {
+      const API = mod.default;
+      API.get('/public/polling-stations')
+         .then(res => setPollingStations(res.data))
+         .catch(err => console.error(err));
+    });
+  }, []);
+
   return (
     <div className="card admin-panel" style={{ marginTop: 16 }}>
       <div className="card-header">
@@ -35,6 +47,15 @@ export default function AdminElectionsTab({
           <div className="form-group">
             <label className="form-label">Election Title</label>
             <input className="input" value={electionForm.title} onChange={e => setElectionForm(p => ({ ...p, title: e.target.value }))} placeholder="e.g. General Election 2026" required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Polling Station (Optional)</label>
+            <select className="input" value={electionForm.polling_station_id || ""} onChange={e => setElectionForm(p => ({ ...p, polling_station_id: e.target.value }))}>
+              <option value="">-- All Polling Stations / Global --</option>
+              {pollingStations.map(ps => (
+                <option key={ps.station_id} value={ps.station_id}>{ps.station_name} ({ps.station_code})</option>
+              ))}
+            </select>
           </div>
           <div className="form-group">
             <label className="form-label">Date</label>
@@ -70,8 +91,15 @@ export default function AdminElectionsTab({
               <span className={`admin-pill ${election.status === 'Active' ? 'success' : election.status === 'Closed' ? 'neutral' : 'warning'}`}>
                 {election.status}
               </span>
+              
+              {election.status === 'Upcoming' && (
+                <button className="button" style={{ fontSize: 12, backgroundColor: "#0f766e", color: "white" }} onClick={() => handleStartElectionNow(election.election_id)}>
+                  <Play size={13} /> Start Now
+                </button>
+              )}
+
               <button className="button secondary" style={{ fontSize: 12 }} onClick={() => handleDeleteElection(election.election_id)}>
-                <Trash2 size={13} />
+                <Trash2 size={13} /> Delete
               </button>
             </div>
           ))}

@@ -10,6 +10,7 @@ class RegisterSchema(BaseModel):
     cnic: str
     phone: str
     constituency: str
+    polling_station_id: Optional[str] = None
 
 
 class VoterCreate(BaseModel):
@@ -26,6 +27,7 @@ class AuthRegisterSchema(BaseModel):
     full_name: str
     email: str
     password: str
+    cnic: str
     district: str
     phone: Optional[str] = None
     constituency: Optional[str] = None
@@ -51,10 +53,9 @@ class CandidateCreateSchema(BaseModel):
     unique_key: Optional[str] = None
 
 class VoteSchema(BaseModel):
-
     voter_id: Optional[str] = None
-
     candidate_id: Union[int, str]
+    polling_station_id: Optional[str] = None
 
 
 class DashboardSummaryResponse(BaseModel):

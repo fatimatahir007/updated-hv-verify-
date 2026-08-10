@@ -1,307 +1,364 @@
-from fastapi.security import HTTPAuthorizationCredentials
-import os
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    status,
+)
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.future import select
-from sqlalchemy import func
+
 from app.database import get_db
-from app.models import Voter, Candidate, Vote, District, AuditLog
-from app.schemas import RegisterSchema, AuthRegisterSchema, AuthUpdateSchema, LoginSchema, CandidateCreateSchema, VoteSchema
-from app.dependencies import require_admin, security, get_current_voter
-from app.utils.security import hash_password, verify_password
-from app.utils.jwt_handler import create_access_token
-from app.face_service import extract_embedding, match_faces
-from app.security_middleware import login_limiter, vote_limiter, register_limiter, audit, validate_registration
-import uuid
+from app.models import Voter, Vote, Election
 from datetime import datetime, timezone
-import hashlib
-import random
-import string
-def calculate_registration_hash(voter_id: str, cnic: str, full_name: str) -> str:
-    return hashlib.sha256(f"{voter_id}{cnic}{full_name}".encode()).hexdigest()
+from app.schemas import (
+    AuthRegisterSchema,
+    AuthUpdateSchema,
+    ForgotPasswordSchema,
+    LoginSchema,
+)
 
-def calculate_vote_hash(voter_id: int, candidate_id: int, receipt_code: str) -> str:
-    return hashlib.sha256(f"{voter_id}{candidate_id}{receipt_code}".encode()).hexdigest()
+# In imports ko apne actual security file se match karein
+from app.utils.security import (
+    hash_password,
+    verify_password,
+)
 
-router = APIRouter()
+from app.utils.jwt_handler import create_access_token, SECRET_KEY, ALGORITHM
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
 
-@router.post("/auth/register")
-async def auth_register(
+voter_security = HTTPBearer(auto_error=False)
 
-    voter: AuthRegisterSchema,
-
+async def get_current_voter(
+    credentials: HTTPAuthorizationCredentials = Depends(voter_security),
     db: AsyncSession = Depends(get_db)
-
 ):
-    existing_email = await db.execute(
-        select(Voter).where(Voter.email == voter.email)
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated"
+        )
+    try:
+        payload = jwt.decode(
+            credentials.credentials,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
+    voter_id = payload.get("sub")
+    if not voter_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload"
+        )
+    try:
+        import uuid
+        voter_uuid = uuid.UUID(voter_id)
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid voter id")
+    result = await db.execute(select(Voter).where(Voter.id == voter_uuid))
+    voter = result.scalar_one_or_none()
+    if not voter:
+        raise HTTPException(status_code=401, detail="Voter not found")
+    return voter
+router = APIRouter(
+    prefix="/auth",
+    tags=["Voter Authentication"],
+)
+
+
+@router.post(
+    "/register",
+    status_code=status.HTTP_201_CREATED,
+)
+async def register_voter(
+    payload: AuthRegisterSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    email = str(payload.email).strip().lower()
+
+    cnic = (
+        payload.cnic.strip()
+        .replace("-", "")
+        .replace(" ", "")
     )
 
-    if existing_email.scalars().first():
+    full_name = payload.full_name.strip()
+    district = payload.district.strip()
 
-        raise HTTPException(status_code=400, detail="Email already exists")
+    email_result = await db.execute(
+        select(Voter.id).where(
+            func.lower(Voter.membership_type) == email
+        )
+    )
 
-    voter_id = uuid.uuid4()
+    if email_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already registered",
+        )
+
+    cnic_result = await db.execute(
+        select(Voter.id).where(
+            Voter.bar_number == cnic
+        )
+    )
+
+    if cnic_result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="CNIC is already registered",
+        )
 
     new_voter = Voter(
-
-        voter_id=voter_id,
-
-        full_name=voter.full_name,
-
-        email=voter.email,
-
-        password=hash_password(voter.password),
-
-        cnic="AUTH-" + ''.join(
-
-            random.choices(
-
-                string.ascii_uppercase + string.digits,
-
-                k=10
-
-            )
-
+        full_name=full_name,
+        email=email,
+        cnic=cnic,
+        district=district,
+        password=hash_password(
+            payload.password
         ),
-
-        district=voter.district,
-
-        phone=voter.phone or "",
-
-        constituency=voter.constituency or voter.district,
-
-    )
-
-    new_voter.registration_hash = calculate_registration_hash(
-        new_voter.voter_id,
-        new_voter.cnic,
-        new_voter.full_name
+        phone=payload.phone or "",
+        constituency=payload.constituency or "",
     )
 
     db.add(new_voter)
 
-    await db.commit()
+    try:
+        await db.commit()
+        await db.refresh(new_voter)
 
-    return {
+    except IntegrityError as e:
+        print("IntegrityError during registration:", repr(e))
+        await db.rollback()
 
-        "success": True,
-
-        "message": "User registered successfully",
-
-    }
-
-
-
-@router.post("/auth/login")
-async def auth_login(
-
-    user: LoginSchema,
-
-    db: AsyncSession = Depends(get_db)
-
-):
-    result = await db.execute(
-        select(Voter).where(
-            (Voter.membership_type == user.email) | (Voter.bar_number == user.email)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email or CNIC is already registered",
         )
-    )
-
-    voter = result.scalars().first()
-
-    if not voter or not voter.password:
-
-        raise HTTPException(status_code=400, detail="Invalid email")
-
-    if not verify_password(user.password, voter.password):
-
-        raise HTTPException(status_code=400, detail="Invalid password")
-
-    token = create_access_token(
-        data={
-            "sub": voter.email,
-            "role": "voter",
-            "voter_id": str(voter.voter_id),
-        }
-    )
 
     return {
-
-        "access_token": token,
-
-        "token_type": "bearer"
-
-    }
-
-
-
-@router.get("/auth/me")
-async def auth_me(
-
-    token_data: dict = Depends(get_current_voter),
-
-    db: AsyncSession = Depends(get_db)
-
-):
-
-    voter_id = token_data.get("voter_id")
-
-    result = await db.execute(
-        select(Voter).where(Voter.voter_id == voter_id)
-    )
-
-    voter = result.scalars().first()
-
-    if not voter:
-
-        raise HTTPException(status_code=404, detail="Voter not found")
-
-    return {
-
-        "id": voter.id,
-
-        "voter_id": voter.voter_id,
-
-        "full_name": voter.full_name,
-
-        "email": voter.email,
-
-        "cnic": voter.cnic,
-
-        "district": voter.district,
-
-        "is_verified": voter.is_verified,
-
-        "has_voted": voter.has_voted,
-
-        "created_at": voter.created_at,
-
-    }
-
-
-
-@router.put("/auth/me")
-async def update_auth_me(
-
-    payload: AuthUpdateSchema,
-
-    token_data: dict = Depends(get_current_voter),
-
-    db: AsyncSession = Depends(get_db)
-
-):
-    voter_id = token_data.get("voter_id")
-
-    result = await db.execute(
-        select(Voter).where(Voter.voter_id == voter_id)
-    )
-
-    voter = result.scalars().first()
-
-    if not voter:
-        raise HTTPException(status_code=404, detail="Voter not found")
-
-    if payload.email and payload.email != voter.email:
-        existing_email = await db.execute(
-            select(Voter).where(Voter.email == payload.email)
-        )
-        if existing_email.scalars().first():
-            raise HTTPException(status_code=400, detail="Email already exists")
-        voter.email = payload.email
-
-    if payload.full_name:
-        voter.full_name = payload.full_name
-
-    if payload.district:
-        voter.district = payload.district
-
-    if payload.password:
-        voter.password = hash_password(payload.password)
-
-    await db.commit()
-    await db.refresh(voter)
-
-    return {
-        "success": True,
-        "message": "Profile updated successfully",
+        "message": "Voter account created successfully",
         "voter": {
-            "id": voter.id,
-            "voter_id": voter.voter_id,
-            "full_name": voter.full_name,
-            "email": voter.email,
-            "district": voter.district,
-            "is_verified": voter.is_verified,
-            "has_voted": voter.has_voted,
-            "created_at": voter.created_at,
+            "id": str(new_voter.id),
+            "full_name": new_voter.full_name,
+            "email": new_voter.email,
+            "cnic": new_voter.cnic,
+            "district": new_voter.district,
         },
     }
 
 
-
-@router.get("/voters")
-async def get_voters(
-
-    db: AsyncSession = Depends(get_db)
-
+@router.post("/login")
+async def login_voter(
+    payload: LoginSchema,
+    db: AsyncSession = Depends(get_db),
 ):
+    identifier = payload.identifier.strip()
 
-    result = await db.execute(
-        select(Voter)
+    possible_cnic = (
+        identifier
+        .replace("-", "")
+        .replace(" ", "")
     )
 
-    return result.scalars().all()
+    if possible_cnic.isdigit():
+        if len(possible_cnic) != 13:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="CNIC must contain exactly 13 digits",
+            )
 
-
-
-@router.get("/authenticate/{voter_id}")
-async def authenticate_voter(
-
-    voter_id: str,
-
-    db: AsyncSession = Depends(get_db)
-
-):
-
-    result = await db.execute(
-
-        select(Voter).where(
-            Voter.voter_id == voter_id
+        result = await db.execute(
+            select(Voter).where(
+                Voter.bar_number == possible_cnic
+            )
         )
+
+    else:
+        normalized_email = identifier.lower()
+
+        result = await db.execute(
+            select(Voter).where(
+                func.lower(Voter.membership_type)
+                == normalized_email
+            )
+        )
+
+    voter = result.scalar_one_or_none()
+
+    if voter is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email, CNIC, or password",
+        )
+
+    if not verify_password(
+        payload.password,
+        voter.password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email, CNIC, or password",
+        )
+
+    access_token = create_access_token(
+        data={
+            "sub": str(voter.id),
+            "role": "voter",
+            "email": voter.email,
+            "cnic": voter.cnic,
+        }
     )
-
-    voter = result.scalars().first()
-
-    if not voter:
-
-        return {
-
-            "success": False,
-
-            "message": "Invalid voter ID"
-        }
-
-    if voter.has_voted:
-
-        return {
-
-            "success": False,
-
-            "message": "Vote already cast"
-        }
 
     return {
-
-        "success": True,
-
-        "message": "Authentication successful",
-
+        "message": "Login successful",
+        "access_token": access_token,
+        "token_type": "bearer",
         "voter": {
-
-            "name": voter.full_name,
-
-            "constituency": voter.constituency
-        }
+            "id": str(voter.id),
+            "full_name": voter.full_name,
+            "email": voter.email,
+            "cnic": voter.cnic,
+            "district": voter.district,
+        },
     }
 
 
+@router.post("/forgot-password")
+async def forgot_password(
+    payload: ForgotPasswordSchema,
+    db: AsyncSession = Depends(get_db),
+):
+    email = str(payload.email).strip().lower()
 
+    result = await db.execute(
+        select(Voter).where(
+            func.lower(Voter.membership_type) == email
+        )
+    )
+
+    voter = result.scalar_one_or_none()
+
+    response_message = (
+        "If this email is registered, "
+        "password reset instructions have been sent"
+    )
+
+    if voter is None:
+        return {
+            "message": response_message,
+        }
+
+    # Yahan baad mein reset token/OTP generate hoga.
+    # Yahan email sending service call hogi.
+
+    return {
+        "message": response_message,
+    }
+
+@router.get("/me")
+async def get_voter_me(voter: Voter = Depends(get_current_voter), db: AsyncSession = Depends(get_db)):
+    # Find if there is an active election right now
+    elections_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
+    elections = elections_res.scalars().all()
+    active_election_id = None
+    # Use current aware local time
+    now = datetime.now().astimezone()
+    for e in elections:
+        # If the database returns naive, treat it as local time
+        start_time = e.date if e.date.tzinfo else e.date.astimezone()
+        if now >= start_time:
+            if e.end_time:
+                end_time = e.end_time if e.end_time.tzinfo else e.end_time.astimezone()
+                if now <= end_time:
+                    active_election_id = e.election_id
+                    break
+            else:
+                active_election_id = e.election_id
+                break
+                
+    has_voted_active = False
+    if active_election_id:
+        existing_vote_res = await db.execute(select(Vote).where(
+            (Vote.ballot_id == str(voter.voter_id)) & (Vote.election_id == active_election_id)
+        ))
+        if existing_vote_res.scalars().first():
+            has_voted_active = True
+    else:
+        has_voted_active = voter.has_voted
+
+    return {
+        "voter_id": str(voter.id),
+        "id": str(voter.id),
+        "full_name": voter.full_name,
+        "email": voter.email,
+        "cnic": voter.cnic,
+        "district": voter.district,
+        "has_voted": has_voted_active,
+    }
+
+@router.put("/me")
+async def update_voter_me(payload: AuthUpdateSchema, voter: Voter = Depends(get_current_voter), db: AsyncSession = Depends(get_db)):
+    if payload.full_name is not None:
+        voter.full_name = payload.full_name
+    if payload.email is not None:
+        voter.email = payload.email
+    if payload.district is not None:
+        voter.district = payload.district
+    if payload.password is not None and payload.password != "":
+        voter.password = hash_password(payload.password)
+    db.add(voter)
+    await db.commit()
+    await db.refresh(voter)
+    
+    # Find if there is an active election right now
+    elections_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
+    elections = elections_res.scalars().all()
+    active_election_id = None
+    # Use current aware local time
+    now = datetime.now().astimezone()
+    for e in elections:
+        # If the database returns naive, treat it as local time
+        start_time = e.date if e.date.tzinfo else e.date.astimezone()
+        if now >= start_time:
+            if e.end_time:
+                end_time = e.end_time if e.end_time.tzinfo else e.end_time.astimezone()
+                if now <= end_time:
+                    active_election_id = e.election_id
+                    break
+            else:
+                active_election_id = e.election_id
+                break
+                
+    has_voted_active = False
+    if active_election_id:
+        existing_vote_res = await db.execute(select(Vote).where(
+            (Vote.ballot_id == str(voter.voter_id)) & (Vote.election_id == active_election_id)
+        ))
+        if existing_vote_res.scalars().first():
+            has_voted_active = True
+    else:
+        has_voted_active = voter.has_voted
+
+    return {
+        "message": "Profile updated successfully",
+        "voter": {
+            "voter_id": str(voter.id),
+            "id": str(voter.id),
+            "full_name": voter.full_name,
+            "email": voter.email,
+            "cnic": voter.cnic,
+            "district": voter.district,
+            "has_voted": has_voted_active,
+        }
+    }
+
+@router.get("/receipts")
+async def get_voter_receipts(voter: Voter = Depends(get_current_voter)):
+    return []

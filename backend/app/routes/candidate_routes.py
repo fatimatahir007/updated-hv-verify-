@@ -77,8 +77,8 @@ async def get_candidates(
     for c in all_candidates:
         if election_id:
             c_eid_str = str(c.election_id) if hasattr(c, 'election_id') and c.election_id else None
-            if c_eid_str and c_eid_str != election_id:
-                # If candidate is assigned to a specific election, and it doesn't match the active election, skip.
+            if c_eid_str != election_id:
+                # If election_id is provided, only show candidates explicitly assigned to this election
                 continue
 
         c_district_name = districts_map.get(c.district_id, "").lower().strip()
