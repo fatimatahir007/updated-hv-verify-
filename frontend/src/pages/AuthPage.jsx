@@ -19,8 +19,12 @@ function AuthPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [mode, setMode] = useState("register");
+  const [mode, setMode] = useState("login");
   const [loading, setLoading] = useState(false);
+  const [show2FA, setShow2FA] = useState(false);
+  const [loginCnic, setLoginCnic] = useState("");
+  const [loginOtp, setLoginOtp] = useState("");
+  const [server2FAOtp, setServer2FAOtp] = useState("");
 
   /*
     Registration mein email aur CNIC dono required hain.
@@ -53,6 +57,8 @@ function AuthPage() {
     // If user explicitly visits the auth page, we clear the previous voter token
     // so they can register or login a new voter.
     localStorage.removeItem("voterToken");
+    setMode("login");
+    setShow2FA(false);
 
     if (location.state?.mode === "login") {
       setMode("login");
@@ -289,6 +295,17 @@ const handleLoginChange = (event) => {
         password,
       });
 
+      if (response.data?.status === "pending_2fa") {
+        setLoginCnic(response.data.cnic);
+        if (response.data.otp) {
+          setServer2FAOtp(response.data.otp);
+          setLoginOtp(response.data.otp);
+        }
+        setShow2FA(true);
+        toast.success(response.data.message || "2FA verification code ready.");
+        return;
+      }
+
       if (!response.data?.access_token) {
         toast.error("Login token was not received");
         return;
@@ -303,12 +320,53 @@ const handleLoginChange = (event) => {
         response.data?.message || "Login successful"
       );
 
-      navigate("/register");
+      navigate("/vote");
     } catch (error) {
       toast.error(
         getErrorMessage(
           error,
           "Invalid email, CNIC, or password"
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogin2FA = async (event) => {
+    event.preventDefault();
+    if (loginOtp.length < 6) {
+      toast.error("Please enter a valid 6-digit OTP code.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const response = await API.post("/auth/login-verify-otp", {
+        cnic: loginCnic,
+        otp: loginOtp.trim(),
+      });
+
+      if (!response.data?.access_token) {
+        toast.error("Login token was not received");
+        return;
+      }
+
+      localStorage.setItem(
+        "voterToken",
+        response.data.access_token
+      );
+
+      toast.success(
+        response.data?.message || "Login successful"
+      );
+
+      navigate("/vote");
+    } catch (error) {
+      toast.error(
+        getErrorMessage(
+          error,
+          "Invalid or expired OTP code"
         )
       );
     } finally {
@@ -381,28 +439,16 @@ const handleLoginChange = (event) => {
         </div>
 
         <h1 className="section-title">
-          {mode === "register" && "Create voter account"}
           {mode === "login" && "Voter login"}
           {mode === "forgot" && "Reset your password"}
         </h1>
-
-        <p className="section-subtitle">
-          {mode === "register" &&
-            "Create your account using your email, CNIC and secure password."}
-
-          {mode === "login" &&
-            "Sign in using your registered email or CNIC."}
-
-          {mode === "forgot" &&
-            "Enter your registered email to receive password reset instructions."}
-        </p>
       </div>
 
       <div
         className="card form-card"
         style={{ marginBottom: 16 }}
       >
-        {mode !== "forgot" && (
+        {mode !== "forgot" && !show2FA && (
           <div
             style={{
               display: "flex",
@@ -411,18 +457,6 @@ const handleLoginChange = (event) => {
               marginBottom: 20,
             }}
           >
-            <button
-              className={`button${
-                mode === "register" ? "" : " secondary"
-              }`}
-              type="button"
-              disabled={loading}
-              onClick={() => setMode("register")}
-            >
-              <UserPlus size={14} />
-              Register
-            </button>
-
             <button
               className={`button${
                 mode === "login" ? "" : " secondary"
@@ -434,299 +468,195 @@ const handleLoginChange = (event) => {
               <LogIn size={14} />
               Login
             </button>
+
+            <button
+              className="button secondary"
+              type="button"
+              disabled={loading}
+              onClick={() => navigate("/activate")}
+              style={{ background: "rgba(16, 185, 129, 0.08)", color: "#065f46", borderColor: "rgba(16, 185, 129, 0.3)" }}
+            >
+              <ShieldCheck size={14} />
+              Activate Account
+            </button>
           </div>
         )}
 
-        {mode === "register" && (
-          <form
-            className="form-grid"
-            onSubmit={handleRegister}
-          >
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="register-full-name"
-              >
-                Full name
-              </label>
+        {!show2FA && mode === "login" && (
+          <div>
+            <form
+              className="form-grid"
+              onSubmit={handleLogin}
+            >
+              <div className="form-group">
+                <label
+                  className="form-label"
+                  htmlFor="login-identifier"
+                >
+                  Email or CNIC
+                </label>
 
-              <div className="input-wrap">
-                <User size={16} />
+                <div className="input-wrap">
+                  <IdCard size={16} />
 
-                <input
-                  id="register-full-name"
-                  className="input"
-                  type="text"
-                  name="full_name"
-                  placeholder="Enter your full name"
-                  value={registerForm.full_name}
-                  onChange={handleRegisterChange}
-                  autoComplete="name"
-                  minLength={3}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="register-email"
-              >
-                Email
-              </label>
-
-              <div className="input-wrap">
-                <Mail size={16} />
-
-                <input
-                  id="register-email"
-                  className="input"
-                  type="email"
-                  name="email"
-                  placeholder="example@email.com"
-                  value={registerForm.email}
-                  onChange={handleRegisterChange}
-                  autoComplete="email"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="register-cnic"
-              >
-                CNIC
-              </label>
-
-              <div className="input-wrap">
-                <IdCard size={16} />
-
-                <input
-                  id="register-cnic"
-                  className="input"
-                  type="text"
-                  name="cnic"
-                  placeholder="Enter 13-digit CNIC"
-                  value={registerForm.cnic}
-                  onChange={handleRegisterChange}
-                  inputMode="numeric"
-                  autoComplete="off"
-                  minLength={13}
-                  maxLength={13}
-                  pattern="[0-9]{13}"
-                  title="Enter exactly 13 CNIC digits"
-                  required
-                />
+                  <input
+                    id="login-identifier"
+                    className="input"
+                    type="text"
+                    name="identifier"
+                    placeholder="Enter registered email or CNIC"
+                    value={loginForm.identifier}
+                    onChange={handleLoginChange}
+                    autoComplete="username"
+                    required
+                  />
+                </div>
               </div>
 
-              <span className="form-hint">
-                Enter CNIC without dashes.
-              </span>
-            </div>
+              <div className="form-group">
+                <label
+                  className="form-label"
+                  htmlFor="login-password"
+                >
+                  Password
+                </label>
 
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="register-district"
-              >
-                District
-              </label>
+                <div className="input-wrap">
+                  <KeyRound size={16} />
 
-              <div className="input-wrap">
-                <MapPin size={16} />
+                  <input
+                    id="login-password"
+                    className="input"
+                    type="password"
+                    name="password"
+                    placeholder="Enter your password"
+                    value={loginForm.password}
+                    onChange={handleLoginChange}
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
 
-                <input
-                  id="register-district"
-                  className="input"
-                  type="text"
-                  name="district"
-                  placeholder="Enter your district"
-                  value={registerForm.district}
-                  onChange={handleRegisterChange}
-                  autoComplete="address-level2"
-                  minLength={2}
-                  required
-                />
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => {
+                    const enteredIdentifier =
+                      loginForm.identifier.trim();
+
+                    setForgotForm({
+                      email: enteredIdentifier.includes("@")
+                        ? enteredIdentifier.toLowerCase()
+                        : "",
+                    });
+
+                    setMode("forgot");
+                  }}
+                  style={{
+                    marginTop: 10,
+                    padding: 0,
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    font: "inherit",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Forgot password?
+                </button>
               </div>
-            </div>
 
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="register-password"
-              >
-                Password
-              </label>
-
-              <div className="input-wrap">
-                <KeyRound size={16} />
-
-                <input
-                  id="register-password"
-                  className="input"
-                  type="password"
-                  name="password"
-                  placeholder="Minimum 8 characters"
-                  value={registerForm.password}
-                  onChange={handleRegisterChange}
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
+              <div className="form-actions">
+                <button
+                  className={`button${
+                    loading ? " is-loading" : ""
+                  }`}
+                  type="submit"
+                  disabled={loading}
+                >
+                  {loading ? "Signing in..." : "Login"}
+                </button>
               </div>
-            </div>
-
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="register-confirm-password"
-              >
-                Confirm password
-              </label>
-
-              <div className="input-wrap">
-                <KeyRound size={16} />
-
-                <input
-                  id="register-confirm-password"
-                  className="input"
-                  type="password"
-                  name="confirm_password"
-                  placeholder="Enter password again"
-                  value={registerForm.confirm_password}
-                  onChange={handleRegisterChange}
-                  autoComplete="new-password"
-                  minLength={8}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-actions">
-              <button
-                className={`button${
-                  loading ? " is-loading" : ""
-                }`}
-                type="submit"
-                disabled={loading}
-              >
-                {loading
-                  ? "Registering..."
-                  : "Create voter account"}
-              </button>
-
-              <span className="form-hint">
-                Each email and CNIC can only be registered once.
-              </span>
-            </div>
-          </form>
+            </form>
+          </div>
         )}
 
-        {mode === "login" && (
-          <form
-            className="form-grid"
-            onSubmit={handleLogin}
-          >
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="login-identifier"
-              >
-                Email or CNIC
-              </label>
-
-              <div className="input-wrap">
-                <IdCard size={16} />
-
-                <input
-                  id="login-identifier"
-                  className="input"
-                  type="text"
-                  name="identifier"
-                  placeholder="Enter registered email or CNIC"
-                  value={loginForm.identifier}
-                  onChange={handleLoginChange}
-                  autoComplete="username"
-                  required
-                />
-              </div>
-
-              <span className="form-hint">
-                Use your registered email address or 13-digit CNIC.
-              </span>
+        {show2FA && (
+          <form className="form-grid" onSubmit={handleLogin2FA}>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--muted)" }}>
+                Enter the 6-digit verification code (OTP) for voter login.
+              </p>
             </div>
 
-            <div className="form-group">
-              <label
-                className="form-label"
-                htmlFor="login-password"
-              >
-                Password
-              </label>
+            {server2FAOtp && (
+              <div style={{
+                background: "rgba(16, 185, 129, 0.08)",
+                border: "1px dashed rgba(16, 185, 129, 0.4)",
+                borderRadius: 10,
+                padding: "10px 14px",
+                marginBottom: 16,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: 13
+              }}>
+                <div>
+                  <span style={{ color: "#065f46", fontWeight: 600 }}>Demo / Test 2FA Code: </span>
+                  <strong style={{ fontFamily: "monospace", fontSize: 15, color: "#047857", letterSpacing: 2 }}>{server2FAOtp}</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLoginOtp(server2FAOtp)}
+                  style={{
+                    background: "#047857",
+                    color: "white",
+                    border: "none",
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer"
+                  }}
+                >
+                  Auto-Fill
+                </button>
+              </div>
+            )}
 
+            <div className="form-group">
+              <label className="form-label">Verification OTP</label>
               <div className="input-wrap">
                 <KeyRound size={16} />
-
                 <input
-                  id="login-password"
                   className="input"
-                  type="password"
-                  name="password"
-                  placeholder="Enter your password"
-                  value={loginForm.password}
-                  onChange={handleLoginChange}
-                  autoComplete="current-password"
+                  type="text"
+                  placeholder="Enter 6-digit code"
+                  maxLength={6}
+                  value={loginOtp}
+                  onChange={(e) => setLoginOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   required
                 />
               </div>
-
-              <button
-                type="button"
-                disabled={loading}
-                onClick={() => {
-                  /*
-                    Agar login field mein email likhi hui hai,
-                    to forgot form mein automatically fill ho jayegi.
-
-                    Agar CNIC likhi hai to forgot email blank rahegi.
-                  */
-                  const enteredIdentifier =
-                    loginForm.identifier.trim();
-
-                  setForgotForm({
-                    email: enteredIdentifier.includes("@")
-                      ? enteredIdentifier.toLowerCase()
-                      : "",
-                  });
-
-                  setMode("forgot");
-                }}
-                style={{
-                  marginTop: 10,
-                  padding: 0,
-                  border: "none",
-                  background: "transparent",
-                  cursor: "pointer",
-                  font: "inherit",
-                  textDecoration: "underline",
-                }}
-              >
-                Forgot password?
-              </button>
             </div>
 
-            <div className="form-actions">
+            <div className="form-actions" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
               <button
-                className={`button${
-                  loading ? " is-loading" : ""
-                }`}
+                className={`button${loading ? " is-loading" : ""}`}
                 type="submit"
                 disabled={loading}
+                style={{ flex: 1 }}
               >
-                {loading ? "Signing in..." : "Login"}
+                {loading ? "Verifying..." : "Verify & Login"}
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={loading}
+                onClick={() => setShow2FA(false)}
+                style={{ flex: 1 }}
+              >
+                Back to Login
               </button>
             </div>
           </form>

@@ -11,6 +11,7 @@ import RegistrationsLedgerPage from "./pages/RegistrationsLedgerPage";
 import VotesLedgerPage from "./pages/VotesLedgerPage";
 import AuditLedgerPage from "./pages/AuditLedgerPage";
 import RegisterPage from "./pages/RegisterPage";
+import ActivatePage from "./pages/ActivatePage";
 import AuthPage from "./pages/AuthPage";
 import ProfilePage from "./pages/ProfilePage";
 import Dashboard from "./pages/Dashboard";
@@ -31,6 +32,7 @@ import ObserverDashboard from "./pages/observer/dashboard/Dashboard";
 import SupportDashboard from "./pages/support/dashboard/Dashboard";
 import VoterDashboard from "./pages/voter/dashboard/Dashboard";
 import VerifyVote from "./pages/verify/VerifyVote";
+
 
 function App() {
   return (
@@ -66,7 +68,8 @@ function App() {
         <Route path="/ledger/registrations" element={<RegistrationsLedgerPage />} />
         <Route path="/ledger/votes" element={<VotesLedgerPage />} />
         <Route path="/ledger/audit" element={<AuditLedgerPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/register" element={<ActivatePage />} />
+        <Route path="/activate" element={<ActivatePage />} />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/profile" element={<ProfilePage />} />
 

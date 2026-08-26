@@ -9,7 +9,7 @@ export const LANGUAGES = {
 export const T = {
   en: {
     // Navbar
-    home: "Home", register: "Register", vote: "Vote",
+    home: "Home", register: "Register", activate: "Activate Account", vote: "Vote",
     verify: "Verify", results: "Results", admin: "Admin", adminLogin: "Admin Login",
     // Register page
     registerTitle: "Voter Registration",
@@ -64,7 +64,7 @@ export const T = {
   },
 
   ur: {
-    home: "ہوم", register: "رجسٹر", vote: "ووٹ",
+    home: "ہوم", register: "رجسٹر", activate: "تصدیق و فعال سازی", vote: "ووٹ",
     verify: "تصدیق", results: "نتائج", admin: "ایڈمن", adminLogin: "ایڈمن لاگ ان",
     registerTitle: "ووٹر رجسٹریشن",
     registerSubtitle: "اپنے سرکاری شناختی کارڈ کی تفصیلات کے ساتھ اپنی محفوظ ووٹنگ شناخت بنائیں۔",
@@ -115,7 +115,7 @@ export const T = {
   },
 
   ps: {
-    home: "کور", register: "راجستر", vote: "رای",
+    home: "کور", register: "راجستر", activate: "د حساب فعالول", vote: "رای",
     verify: "تایید", results: "پایلې", admin: "اداره", adminLogin: "د اداری ننوتل",
     registerTitle: "د رایې ورکوونکي راجستر",
     registerSubtitle: "د خپل رسمي تذکرې سره خپل خوندي د رایې ورکولو هویت جوړ کړئ.",

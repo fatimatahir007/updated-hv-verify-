@@ -39,26 +39,17 @@ async def cast_vote(
     vote_limiter.check(get_client_ip(request))
     
     # Check if there is an active election
+    from app.routes.election_routes import _compute_status
     elections_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
     elections = elections_res.scalars().all()
     active_election_exists = False
     active_election_id = None
-    # Use current aware local time
-    now = datetime.now().astimezone()
+
     for e in elections:
-        # If the database returns naive, treat it as local time
-        start_time = e.date if e.date.tzinfo else e.date.astimezone()
-        if now >= start_time:
-            if e.end_time:
-                end_time = e.end_time if e.end_time.tzinfo else e.end_time.astimezone()
-                if now <= end_time:
-                    active_election_exists = True
-                    active_election_id = e.election_id
-                    break
-            else:
-                active_election_exists = True
-                active_election_id = e.election_id
-                break
+        if _compute_status(e) == "Active":
+            active_election_exists = True
+            active_election_id = e.election_id
+            break
                 
     if not active_election_exists:
         return {
@@ -87,7 +78,7 @@ async def cast_vote(
                 "message": "Not authorized"
             }
 
-        voter_id = payload.get("voter_id")
+        voter_id = payload.get("sub") or payload.get("voter_id")
         if voter_id:
             try:
                 v_uuid = uuid.UUID(str(voter_id))

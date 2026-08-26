@@ -76,6 +76,24 @@ from app.admin_recovery import (
 
 app = FastAPI()
 
+# CORS — registered immediately after app creation.
+# Explicit allow_origins required when allow_credentials=True.
+# allow_origin_regex alone can silently omit the header in some Starlette versions.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost",
+        "http://localhost:80",
+        "http://localhost:8080",
+        "http://127.0.0.1",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 
 
@@ -136,28 +154,7 @@ def ensure_phase_one_schema(conn):
                 raise
 
 
-# =====================================
-# CORS
-# =====================================
-
-allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "")
-allowed_origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
-for default_origin in [
-    "http://localhost",
-    "http://localhost:80",
-    "http://localhost:5173",
-    "http://127.0.0.1",
-]:
-    if default_origin not in allowed_origins:
-        allowed_origins.append(default_origin)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origin_regex=".*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is configured above, immediately after app creation.
 
 
 # =====================================
@@ -1389,17 +1386,19 @@ async def get_public_registrations(
 @app.get("/public/elections")
 async def get_public_elections(db: AsyncSession = Depends(get_db)):
     # Returns active and upcoming elections
-    from app.routes.election_routes import _compute_status
+    from app.routes.election_routes import _compute_status, ensure_utc
     result = await db.execute(select(Election).order_by(Election.created_at.desc()))
     elections = result.scalars().all()
     out = []
     for e in elections:
         status = _compute_status(e)
+        start_utc = ensure_utc(e.date)
+        end_utc = ensure_utc(e.end_time)
         out.append({
             "election_id": str(e.election_id),
             "title": e.title,
-            "start_time": e.date,
-            "end_time": e.end_time,
+            "start_time": start_utc.isoformat() if start_utc else None,
+            "end_time": end_utc.isoformat() if end_utc else None,
             "status": status
         })
     return out
@@ -2156,6 +2155,7 @@ from app.routes.superadmin_routes import router as superadmin_router
 from app.routes.voter_routes import router as voter_router
 from app.routes.verify_routes import router as verify_router
 from app.routes.polling_station_routes import router as polling_station_router
+from app.routes.nadra_routes import router as nadra_router, voters_router
 
 app.include_router(voter_auth_router)
 app.include_router(candidate_router)
@@ -2178,6 +2178,8 @@ app.include_router(superadmin_router, dependencies=[Depends(require_admin)])
 app.include_router(voter_router, dependencies=[Depends(require_admin)])
 app.include_router(verify_router, dependencies=[Depends(require_admin)])
 app.include_router(polling_station_router, dependencies=[Depends(require_admin)])
+app.include_router(nadra_router)
+app.include_router(voters_router)
 
 
 # =====================================

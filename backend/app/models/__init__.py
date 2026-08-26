@@ -40,6 +40,8 @@ class Voter(Base):
     qr_hash = Column('qr_hash', String, nullable=True)
     voted_at = Column('voted_at', DateTime(timezone=True), nullable=True)
     polling_station_id = Column('polling_station_id', Uuid, nullable=True)
+    otp_code = Column('otp_code', String, nullable=True)
+    otp_expires_at = Column('otp_expires_at', DateTime(timezone=True), nullable=True)
 
     @property
     def full_name(self):

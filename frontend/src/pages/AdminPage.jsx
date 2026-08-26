@@ -1614,6 +1614,28 @@ function AdminPage() {
     }
   };
 
+  const handleCloseElection = async (electionId) => {
+    if (!window.confirm("Are you sure you want to close this election?")) return;
+    try {
+      await API.put(`/admin/elections/${electionId}/close`);
+      toast.success("Election closed successfully!");
+      await loadElections();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to close election");
+    }
+  };
+
+  const handleCloseAllElections = async () => {
+    if (!window.confirm("Are you sure you want to close ALL elections right now?")) return;
+    try {
+      const res = await API.post("/admin/elections/close-all");
+      toast.success(res.data?.message || "All elections closed successfully!");
+      await loadElections();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Failed to close all elections");
+    }
+  };
+
   const handleDeleteElection = async (electionId) => {
     if (!window.confirm('Delete this election?')) return;
     try {
@@ -3445,6 +3467,8 @@ function AdminPage() {
           elections={elections}
           handleDeleteElection={handleDeleteElection}
           handleStartElectionNow={handleStartElectionNow}
+          handleCloseElection={handleCloseElection}
+          handleCloseAllElections={handleCloseAllElections}
         />
       )}
 

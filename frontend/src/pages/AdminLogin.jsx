@@ -50,6 +50,7 @@ const decodeToken = (token) => {
       else if (roleName === "observer") baseRoute = "/observer";
       else if (roleName === "technical_support") baseRoute = "/support";
       else if (roleName === "voter") baseRoute = "/voter";
+      else if (roleName === "nadra_officer") baseRoute = "/admin";
 
       const destination = location.state?.from || baseRoute;
       navigate(destination, { replace: true });
@@ -82,6 +83,42 @@ const decodeToken = (token) => {
       </div>
 
       <div className="card form-card">
+        <div style={{
+          background: "rgba(79, 70, 229, 0.06)",
+          border: "1px dashed rgba(79, 70, 229, 0.25)",
+          borderRadius: 10,
+          padding: "10px 14px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontSize: 12.5
+        }}>
+          <div>
+            <span style={{ color: "#4338ca", fontWeight: 600 }}>Default Credentials: </span>
+            <code style={{ fontFamily: "monospace", color: "#312e81", fontWeight: 700 }}>Admin / Admin</code>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setEmail("Admin");
+              setPassword("Admin");
+            }}
+            style={{
+              background: "#4f46e5",
+              color: "white",
+              border: "none",
+              padding: "4px 10px",
+              borderRadius: 6,
+              fontSize: 11.5,
+              fontWeight: 600,
+              cursor: "pointer"
+            }}
+          >
+            Auto-Fill
+          </button>
+        </div>
+
         <form className="form-grid" onSubmit={handleSubmit}>
           <div className="form-group">
             <label className="form-label">Username or Email Address</label>

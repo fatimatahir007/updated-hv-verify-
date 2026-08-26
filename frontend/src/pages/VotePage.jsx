@@ -104,6 +104,9 @@ function VotePage() {
 
   const [loginForm, setLoginForm] = useState({ identifier: "", password: "" });
   const [loginLoading, setLoginLoading] = useState(false);
+  const [showLogin2FA, setShowLogin2FA] = useState(false);
+  const [login2FACnic, setLogin2FACnic] = useState("");
+  const [login2FAOtp, setLogin2FAOtp] = useState("");
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -113,11 +116,39 @@ function VotePage() {
         identifier: loginForm.identifier,
         password: loginForm.password
       });
+
+      if (response.data?.status === "pending_2fa") {
+        setLogin2FACnic(response.data.cnic);
+        setShowLogin2FA(true);
+        const serverOtp = response.data.otp || "123456";
+        toast.success(`OTP sent to email! (Demo OTP: ${serverOtp})`, { duration: 8000 });
+        return;
+      }
+
       toast.success("Login successful!");
       localStorage.setItem("voterToken", response.data.access_token);
-      navigate("/register");
+      window.location.reload();
     } catch (err) {
       toast.error(err.response?.data?.detail || "Invalid email, CNIC, or password");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogin2FASubmit = async (e) => {
+    e.preventDefault();
+    const otpToSubmit = login2FAOtp.trim() || "123456";
+    setLoginLoading(true);
+    try {
+      const response = await API.post("/auth/login-verify-otp", {
+        cnic: login2FACnic,
+        otp: otpToSubmit
+      });
+      toast.success("Login successful!");
+      localStorage.setItem("voterToken", response.data.access_token);
+      window.location.reload();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Invalid or expired OTP.");
     } finally {
       setLoginLoading(false);
     }
@@ -643,56 +674,101 @@ function VotePage() {
       </div>
 
       <div className="card form-card">
-        <form className="form-grid" onSubmit={handleLoginSubmit}>
-          <div className="form-group">
-            <label className="form-label">Email or CNIC</label>
-            <div className="input-wrap">
-              <IdCard size={16} />
-              <input 
-                type="text" 
-                className="input" 
-                placeholder="Enter email or 13-digit CNIC"
-                value={loginForm.identifier} 
-                onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))} 
-                required 
-              />
+        {showLogin2FA ? (
+          <form className="form-grid" onSubmit={handleLogin2FASubmit}>
+            <div style={{ textAlign: "center", marginBottom: 16 }}>
+              <p style={{ margin: 0, fontSize: 14, color: "var(--muted)" }}>
+                Enter 6-digit verification code sent to your email (or Demo OTP: <strong>123456</strong>).
+              </p>
             </div>
-          </div>
-          
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <div className="input-wrap">
-              <KeyRound size={16} />
-              <input 
-                type="password" 
-                className="input" 
-                placeholder="Enter password"
-                value={loginForm.password} 
-                onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))} 
-                required 
-              />
-            </div>
-          </div>
 
-          <div className="form-actions" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
-            <button 
-              className={`button${loginLoading ? " is-loading" : ""}`} 
-              type="submit"
-              disabled={loginLoading}
-              style={{ flex: 1 }}
-            >
-              {loginLoading ? "Signing in..." : "Enter Voting Booth"}
-            </button>
-            <button 
-              className="button secondary" 
-              type="button"
-              onClick={() => navigate("/auth")}
-              style={{ flex: 1 }}
-            >
-              Register Account
-            </button>
-          </div>
-        </form>
+            <div className="form-group">
+              <label className="form-label">Verification OTP</label>
+              <div className="input-wrap">
+                <KeyRound size={16} />
+                <input
+                  className="input"
+                  type="text"
+                  placeholder="Enter 6-digit code (e.g. 123456)"
+                  maxLength={6}
+                  value={login2FAOtp}
+                  onChange={(e) => setLogin2FAOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+              </div>
+            </div>
+
+            <div className="form-actions" style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <button
+                className={`button${loginLoading ? " is-loading" : ""}`}
+                type="submit"
+                disabled={loginLoading}
+                style={{ flex: 1 }}
+              >
+                {loginLoading ? "Verifying..." : "Verify & Login"}
+              </button>
+              <button
+                className="button secondary"
+                type="button"
+                disabled={loginLoading}
+                onClick={() => setShowLogin2FA(false)}
+                style={{ flex: 1 }}
+              >
+                Back to Login
+              </button>
+            </div>
+          </form>
+        ) : (
+          <form className="form-grid" onSubmit={handleLoginSubmit}>
+            <div className="form-group">
+              <label className="form-label">Email or CNIC</label>
+              <div className="input-wrap">
+                <IdCard size={16} />
+                <input 
+                  type="text" 
+                  className="input" 
+                  placeholder="Enter email or 13-digit CNIC"
+                  value={loginForm.identifier} 
+                  onChange={e => setLoginForm(p => ({ ...p, identifier: e.target.value }))} 
+                  required 
+                />
+              </div>
+            </div>
+            
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <div className="input-wrap">
+                <KeyRound size={16} />
+                <input 
+                  type="password" 
+                  className="input" 
+                  placeholder="Enter password"
+                  value={loginForm.password} 
+                  onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))} 
+                  required 
+                />
+              </div>
+            </div>
+
+            <div className="form-actions" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
+              <button 
+                className={`button${loginLoading ? " is-loading" : ""}`} 
+                type="submit"
+                disabled={loginLoading}
+                style={{ flex: 1 }}
+              >
+                {loginLoading ? "Signing in..." : "Enter Voting Booth"}
+              </button>
+              <button 
+                className="button secondary" 
+                type="button"
+                onClick={() => navigate("/activate")}
+                style={{ flex: 1 }}
+              >
+                Activate Account
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

@@ -18,10 +18,19 @@ else:
     elif DATABASE_URL.startswith("postgres://"):
         DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=True
-)
+try:
+    if "postgresql" in DATABASE_URL:
+        import asyncpg
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=True
+    )
+except Exception:
+    DATABASE_URL = "sqlite+aiosqlite:///./hc_verify.db"
+    engine = create_async_engine(
+        DATABASE_URL,
+        echo=True
+    )
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,

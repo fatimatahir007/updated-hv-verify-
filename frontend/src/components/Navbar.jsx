@@ -3,6 +3,7 @@ import {
   ShieldCheck,
   Home,
   UserPlus,
+  LogIn,
   Vote,
   BadgeCheck,
   BarChart3,
@@ -32,9 +33,14 @@ function Navbar() {
             {t.home}
           </Link>
 
-          <Link className="nav-link" to="/auth">
+          <Link className="nav-link" to="/activate">
             <UserPlus size={16} />
-            {t.register}
+            Register / Activate
+          </Link>
+
+          <Link className="nav-link" to="/auth">
+            <LogIn size={16} />
+            Voter Login
           </Link>
 
           <Link className="nav-link" to="/vote">

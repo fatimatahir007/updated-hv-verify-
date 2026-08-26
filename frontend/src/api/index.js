@@ -1,7 +1,15 @@
 import axios from "axios";
 
+// In development, Vite proxies /api/* → http://localhost:8000/*
+// This means requests stay same-origin (localhost:5173) → no CORS needed.
+// In production builds, requests go directly to the backend host.
+const isDev = import.meta.env.DEV;
+const BASE_URL = isDev
+  ? "/api"                                          // proxied by vite.config.js
+  : `http://${window.location.hostname}:8000`;     // direct in production
+
 const API = axios.create({
-  baseURL: `http://${window.location.hostname}:8000`,
+  baseURL: BASE_URL,
 });
 
 // ── Auto-attach admin JWT to every request ──────────────────────
