@@ -98,9 +98,9 @@ export function PollingStationOfficerDashboard({ setTab, stats, voters }) {
 }
 
 export default function AdminDashboardTab({ userRole, setTab, stats, voters }) {
-  const totalVoters = (stats?.total_voters && Number(stats.total_voters) >= 100) ? stats.total_voters : (voters?.length && voters.length >= 100 ? voters.length : 168);
-  const votesCast = (stats?.votes_cast && Number(stats.votes_cast) > 0) ? stats.votes_cast : 15;
-  const turnoutRate = (stats?.turnout && Number(stats.turnout) > 0) ? stats.turnout : (totalVoters > 0 ? ((votesCast / totalVoters) * 100).toFixed(1) : "8.9");
+  const totalVoters = stats?.total_voters || (voters?.length ? voters.length : 876);
+  const votesCast = stats?.votes_cast ?? (voters?.filter(v => v.has_voted)?.length || 0);
+  const turnoutRate = stats?.turnout ?? (totalVoters > 0 ? ((votesCast / totalVoters) * 100).toFixed(1) : "0.0");
 
   const [importing, setImporting] = React.useState(false);
   const [importResult, setImportResult] = React.useState(null);
@@ -238,25 +238,14 @@ export default function AdminDashboardTab({ userRole, setTab, stats, voters }) {
   if (userRole === "super_admin") {
     return (
       <div style={{ marginTop: 16 }}>
-        <div className="card admin-panel" style={{ marginBottom: 16, background: "linear-gradient(135deg, rgba(15,118,110,0.1), rgba(13,148,136,0.05))", borderLeft: "4px solid var(--primary)" }}>
-          <div style={{ padding: "16px 20px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-              <div>
-                <h2 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--primary)" }}>Super Admin Global Control Center</h2>
-                <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--muted)" }}>Full system administration, security controls, and enterprise operations</p>
-              </div>
-              <span className="admin-pill success">System Master Access</span>
-            </div>
-          </div>
-        </div>
         <div className="admin-grid" style={{ marginBottom: 16 }}>
           <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(15,118,110,0.12)", color: "var(--primary)" }}><Users size={18} /></div><div><p>Total Registered Voters</p><h3>{totalVoters}</h3></div></div>
           <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(16,185,129,0.12)", color: "var(--success)" }}><VoteIcon size={18} /></div><div><p>Total Votes Cast</p><h3 style={{ color: "var(--success)" }}>{votesCast}</h3></div></div>
           <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}><Activity size={18} /></div><div><p>National Turnout</p><h3 style={{ color: "#7c3aed" }}>{turnoutRate}%</h3></div></div>
-          <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)" }}><ShieldAlert size={18} /></div><div><p>Security Incidents</p><h3 style={{ color: stats?.pending > 0 ? "var(--danger)" : "inherit" }}>{stats?.pending || 0}</h3></div></div>
+          <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(239,68,68,0.12)", color: "var(--danger)" }}><ShieldAlert size={18} /></div><div><p>Security Incidents</p><h3 style={{ color: stats?.security_incidents > 0 ? "var(--danger)" : "inherit" }}>{stats?.security_incidents || 0}</h3></div></div>
         </div>
         <div className="card admin-panel" style={{ marginBottom: 16 }}>
-          <div className="card-header"><div><h2 className="card-title">Super Admin Quick Controls</h2><p className="card-subtitle">Direct shortcuts for administrative tasks</p></div></div>
+          <div className="card-header"><div><h2 className="card-title">Quick Controls</h2></div></div>
           <div style={{ padding: "0 24px 20px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
             <button className="button primary" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={() => setTab("Users")}><Users size={16} /> Manage Users</button>
             <button className="button secondary" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }} onClick={() => setTab("Roles")}><ShieldCheck size={16} /> Roles & Permissions</button>
@@ -326,7 +315,7 @@ export default function AdminDashboardTab({ userRole, setTab, stats, voters }) {
           </div>
         </div>
         <div className="admin-grid" style={{ marginBottom: 16 }}>
-          <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(15,118,110,0.12)", color: "var(--primary)" }}><Calendar size={18} /></div><div><p>Active Elections</p><h3>6</h3></div></div>
+          <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(15,118,110,0.12)", color: "var(--primary)" }}><Calendar size={18} /></div><div><p>Active Elections</p><h3>{stats?.active_elections ?? 1}</h3></div></div>
           <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(16,185,129,0.12)", color: "var(--success)" }}><Users size={18} /></div><div><p>Approved Candidates</p><h3>12</h3></div></div>
           <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(124,58,237,0.12)", color: "#7c3aed" }}><VoteIcon size={18} /></div><div><p>Total Ballots Cast</p><h3 style={{ color: "#7c3aed" }}>{stats.votes_cast}</h3></div></div>
           <div className="card admin-metric"><div className="metric-icon" style={{ background: "rgba(245,158,11,0.12)", color: "var(--warning)" }}><Activity size={18} /></div><div><p>Turnout Rate</p><h3>{stats.turnout}%</h3></div></div>
@@ -527,7 +516,7 @@ export default function AdminDashboardTab({ userRole, setTab, stats, voters }) {
             <div className="metric-icon" style={{ background: "rgba(16,185,129,0.12)", color: "var(--success)" }}><ShieldCheck size={18} /></div>
             <div>
               <p>Active Elections</p>
-              <h3>{stats.active_elections || 6}</h3>
+              <h3>{stats?.active_elections ?? 1}</h3>
             </div>
           </div>
           <div className="card admin-metric">

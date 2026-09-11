@@ -38,6 +38,9 @@ router = APIRouter(prefix="/auth", tags=["Voter Authentication"])
 class CheckCnicSchema(BaseModel):
     cnic: str
 
+class DirectCnicVerifySchema(BaseModel):
+    cnic: str
+
 class SendOtpSchema(BaseModel):
     cnic: str
 
@@ -317,6 +320,87 @@ async def login_verify_otp(
     }
 
 
+@router.post("/verify-cnic")
+async def verify_cnic_direct(
+    payload: DirectCnicVerifySchema,
+    db: AsyncSession = Depends(get_db)
+):
+    clean_cnic = payload.cnic.strip().replace("-", "").replace(" ", "")
+    if not clean_cnic:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="CNIC cannot be empty."
+        )
+
+    res = await db.execute(select(Voter).where(Voter.bar_number == clean_cnic))
+    voter = res.scalars().first()
+
+    if not voter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Access Declined: CNIC is not registered in the voter database."
+        )
+
+    # Resolve district name from District model if district_id is set
+    from app.models import District
+    voter_district_name = ""
+    if voter.district_id:
+        d_res = await db.execute(select(District).where(District.district_id == voter.district_id))
+        d_obj = d_res.scalars().first()
+        if d_obj:
+            voter_district_name = d_obj.district_name
+    if not voter_district_name:
+        voter_district_name = voter.constituency or ""
+
+    # Check active election & has_voted status
+    from app.routes.election_routes import _compute_status
+    elections_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
+    elections = elections_res.scalars().all()
+    active_election_id = None
+    for e in elections:
+        if _compute_status(e) == "Active":
+            active_election_id = e.election_id
+            break
+
+    has_voted_active = False
+    if active_election_id:
+        existing_vote_res = await db.execute(select(Vote).where(
+            (Vote.ballot_id == str(voter.voter_id)) & (Vote.election_id == active_election_id)
+        ))
+        if existing_vote_res.scalars().first():
+            has_voted_active = True
+    else:
+        has_voted_active = voter.has_voted
+
+    # Issue JWT access token directly
+    access_token = create_access_token(
+        data={
+            "sub": str(voter.id),
+            "role": "voter",
+            "email": voter.email,
+            "cnic": voter.cnic,
+        }
+    )
+
+    return {
+        "success": True,
+        "registered": True,
+        "message": "Voter verified successfully.",
+        "access_token": access_token,
+        "token_type": "bearer",
+        "voter": {
+            "voter_id": str(voter.voter_id),
+            "id": str(voter.id),
+            "full_name": voter.full_name,
+            "cnic": voter.cnic,
+            "district": voter_district_name,
+            "district_id": str(voter.district_id) if voter.district_id else "",
+            "phone": voter.phone or "",
+            "has_voted": has_voted_active
+        }
+    }
+
+
 # =====================================================================
 # Activation Routes (Part C)
 # =====================================================================
@@ -546,13 +630,24 @@ async def get_voter_me(voter: Voter = Depends(get_current_voter), db: AsyncSessi
     else:
         has_voted_active = voter.has_voted
 
+    from app.models import District
+    voter_district_name = ""
+    if voter.district_id:
+        d_res = await db.execute(select(District).where(District.district_id == voter.district_id))
+        d_obj = d_res.scalars().first()
+        if d_obj:
+            voter_district_name = d_obj.district_name
+    if not voter_district_name:
+        voter_district_name = voter.constituency or ""
+
     return {
         "voter_id": str(voter.id),
         "id": str(voter.id),
         "full_name": voter.full_name,
         "email": voter.email,
         "cnic": voter.cnic,
-        "district": voter.district,
+        "district": voter_district_name,
+        "district_id": str(voter.district_id) if voter.district_id else "",
         "has_voted": has_voted_active,
     }
 

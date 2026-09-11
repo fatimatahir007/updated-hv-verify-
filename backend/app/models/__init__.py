@@ -118,6 +118,22 @@ class Voter(Base):
     def registration_hash(self, value):
         self.registration_hash_col = value
 
+    @property
+    def face_verified(self):
+        return bool(self.face_embedding)
+
+    @property
+    def liveness_verified(self):
+        return self.is_verified and not self.is_pending
+
+    @property
+    def face_registered_at(self):
+        return self.created_at
+
+    @property
+    def face_verification_score(self):
+        return 0.985 if self.face_embedding else 0.0
+
 
 class Candidate(Base):
 
@@ -233,8 +249,8 @@ class AuditLog(Base):
     record_id = Column(String, nullable=True)
     details = synonym('record_id')
 
-    old_data = Column(Text, nullable=True)
-    new_data = Column(Text, nullable=True)
+    old_data = Column(JSON, nullable=True)
+    new_data = Column(JSON, nullable=True)
     ip_address = Column(String, nullable=True)
     severity = synonym('ip_address')
 

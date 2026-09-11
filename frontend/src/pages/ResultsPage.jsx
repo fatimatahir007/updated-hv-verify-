@@ -15,7 +15,19 @@ function ResultsPage() {
   const [selectedElectionId, setSelectedElectionId] = useState("");
   const [results, setResults] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [districtsMap, setDistrictsMap] = useState({});
   const navigate = useNavigate();
+
+  useEffect(() => {
+    API.get("/public/districts").then(res => {
+      const map = {};
+      (res.data || []).forEach(d => {
+        map[d.district_id] = d.district_name;
+        map[d.district_name.toLowerCase()] = d.district_name;
+      });
+      setDistrictsMap(map);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const fetchElections = async () => {
@@ -51,18 +63,23 @@ function ResultsPage() {
         const fallbackUrl = `/candidates?election_id=${encodeURIComponent(selectedElectionId)}`;
         const resultsRes = await API.get(url, { headers }).catch(() => API.get(fallbackUrl, { headers }));
         const list = Array.isArray(resultsRes.data) ? resultsRes.data : (resultsRes.data?.records || resultsRes.data?.candidates || resultsRes.data?.items || []);
-        const mapped = list.map(c => ({
-          ...c,
-          id: c.id || c.candidate_id || c._id,
-          candidate_id: c.candidate_id || c.id,
-          name: c.name || c.full_name || c.candidate_name || c.title || "",
-          full_name: c.full_name || c.name || c.candidate_name || c.title || "",
-          party: c.party || c.party_name || "",
-          party_name: c.party_name || c.party || "",
-          symbol: c.symbol || c.symbol_name || "",
-          symbol_name: c.symbol_name || c.symbol || "",
-          votes: typeof c.votes === 'number' ? c.votes : (parseInt(c.votes) || 0)
-        }));
+        const mapped = list.map(c => {
+          const rawDist = c.district_name || c.district || c.constituency || "";
+          const resolvedDist = districtsMap[rawDist] || (/^[0-9a-fA-F-]{36}$/.test(rawDist) ? (districtsMap[rawDist] || "") : rawDist);
+          return {
+            ...c,
+            id: c.id || c.candidate_id || c._id,
+            candidate_id: c.candidate_id || c.id,
+            name: c.name || c.full_name || c.candidate_name || c.title || "",
+            full_name: c.full_name || c.name || c.candidate_name || c.title || "",
+            party: c.party || c.party_name || "",
+            party_name: c.party_name || c.party || "",
+            symbol: c.symbol || c.symbol_name || "",
+            symbol_name: c.symbol_name || c.symbol || "",
+            district: resolvedDist,
+            votes: typeof c.votes === 'number' ? c.votes : (parseInt(c.votes) || 0)
+          };
+        });
         setResults(mapped);
       } catch (error) {
         console.error("Results load error:", error);
@@ -72,7 +89,7 @@ function ResultsPage() {
     };
 
     loadResults();
-  }, [selectedElectionId]);
+  }, [selectedElectionId, districtsMap]);
 
   const totalVotes = results.reduce(
     (sum, item) => sum + item.votes,
@@ -90,19 +107,11 @@ function ResultsPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <div className="eyebrow">
-          <BarChart3 size={16} />
-          Election results
-        </div>
         <h1 className="section-title">
-          Results dashboard
+          Election Results
         </h1>
-        <p className="section-subtitle" style={{ marginBottom: 16 }}>
-          A real-time summary of votes recorded on the public ledger.
-        </p>
-        
         {elections.length > 0 && (
-          <div style={{ maxWidth: 400 }}>
+          <div style={{ maxWidth: 400, marginTop: 12 }}>
             <label className="form-label">Select Election</label>
             <select 
               className="input" 
@@ -146,7 +155,7 @@ function ResultsPage() {
           <div>
             <p>Lead margin</p>
             <h3>
-              {leader ? leader.votes - (sortedResults[1]?.votes || 0) : 0}
+              {leader && leader.votes > 0 ? leader.votes - (sortedResults[1]?.votes || 0) : 0}
             </h3>
           </div>
         </div>
@@ -163,7 +172,7 @@ function ResultsPage() {
         </div>
         <div className="results-leader">
           <Trophy size={18} />
-          {leader ? `${leader.symbol} ${leader.name}` : "No leader yet"}
+          {leader && leader.votes > 0 ? `${leader.symbol} ${leader.name}` : "Voting in Progress (0 votes cast)"}
         </div>
       </div>
 
@@ -199,7 +208,7 @@ function ResultsPage() {
                     <h3>
                       {candidate.symbol} {candidate.name}
                     </h3>
-                    <p>{candidate.party}</p>
+                    <p>{candidate.party}{candidate.district ? ` • District: ${candidate.district}` : ""}</p>
                   </div>
                   <div className="results-stat">
                     <span>{percent}%</span>

@@ -62,12 +62,7 @@ function VerifyPage() {
   return (
     <div className="page">
       <div className="page-header">
-        <div className="eyebrow">
-          <BadgeCheck size={16} />
-          {t.verifyEyebrow}
-        </div>
         <h1 className="section-title">{t.verifyTitle}</h1>
-        <p className="section-subtitle">{t.verifySubtitle}</p>
       </div>
 
       <div className="card form-card">

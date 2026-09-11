@@ -22,6 +22,9 @@ __pycache__/
 *.sqlite
 *.sqlite3
 
+# Temporary / debug scripts
+backend/scratch/
+
 # Node dependencies
 node_modules/
 frontend/node_modules/

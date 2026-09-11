@@ -51,6 +51,18 @@ async def get_candidates(
     if district:
         target_district_name = district.lower().strip()
 
+    # Resolve active election if election_id was not explicitly passed
+    target_election_id = election_id
+    if not target_election_id:
+        from app.models import Election
+        from app.routes.election_routes import _compute_status
+        elec_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
+        all_elecs = elec_res.scalars().all()
+        for e in all_elecs:
+            if _compute_status(e) == "Active":
+                target_election_id = str(e.election_id)
+                break
+
     try:
         result = await db.execute(
             select(Candidate)
@@ -75,10 +87,12 @@ async def get_candidates(
 
     filtered_candidates = []
     for c in all_candidates:
+        c_eid_str = str(c.election_id) if hasattr(c, 'election_id') and c.election_id else None
         if election_id:
-            c_eid_str = str(c.election_id) if hasattr(c, 'election_id') and c.election_id else None
             if c_eid_str != election_id:
-                # If election_id is provided, only show candidates explicitly assigned to this election
+                continue
+        elif target_election_id:
+            if c_eid_str and c_eid_str != target_election_id:
                 continue
 
         c_district_name = districts_map.get(c.district_id, "").lower().strip()
@@ -152,16 +166,28 @@ async def create_candidate(
     district_uuid = None
     if candidate.district:
         try:
-            district_uuid = uuid.UUID(candidate.district)
+            district_uuid = uuid.UUID(str(candidate.district))
         except Exception:
-            pass
+            d_res = await db.execute(select(District).where(func.lower(District.district_name) == str(candidate.district).strip().lower()))
+            d_obj = d_res.scalars().first()
+            if d_obj:
+                district_uuid = d_obj.district_id
 
     election_uuid = None
     if candidate.election_id:
         try:
-            election_uuid = uuid.UUID(candidate.election_id)
+            election_uuid = uuid.UUID(str(candidate.election_id))
         except Exception:
             pass
+    if not election_uuid:
+        from app.models import Election
+        from app.routes.election_routes import _compute_status
+        elec_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
+        all_elecs = elec_res.scalars().all()
+        for e in all_elecs:
+            if _compute_status(e) == "Active":
+                election_uuid = e.election_id
+                break
 
     new_candidate = Candidate(
         candidate_id=uuid.uuid4(),

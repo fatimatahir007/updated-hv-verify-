@@ -9,9 +9,30 @@ function AdminLogin() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("Admin");
+  const [password, setPassword] = useState("Admin");
   const [loading, setLoading] = useState(false);
+
+  const handleQuickLogin = async (usr = "Admin", pwd = "Admin") => {
+    try {
+      setLoading(true);
+      const response = await API.post("/admin/login", {
+        username: usr,
+        email: usr,
+        password: pwd
+      });
+
+      localStorage.setItem("adminToken", response.data.access_token);
+      const destination = location.state?.from || "/admin";
+      navigate(destination, { replace: true });
+      toast.success("Admin NADRA access granted");
+    } catch (error) {
+      console.log(error);
+      toast.error(error.response?.data?.detail || "Admin login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
 const decodeToken = (token) => {
   try {
@@ -84,38 +105,36 @@ const decodeToken = (token) => {
 
       <div className="card form-card">
         <div style={{
-          background: "rgba(79, 70, 229, 0.06)",
-          border: "1px dashed rgba(79, 70, 229, 0.25)",
-          borderRadius: 10,
-          padding: "10px 14px",
-          marginBottom: 16,
+          background: "linear-gradient(135deg, rgba(79, 70, 229, 0.1), rgba(67, 56, 202, 0.05))",
+          border: "1px solid rgba(79, 70, 229, 0.3)",
+          borderRadius: 12,
+          padding: "12px 16px",
+          marginBottom: 18,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          fontSize: 12.5
+          fontSize: "0.85rem"
         }}>
           <div>
-            <span style={{ color: "#4338ca", fontWeight: 600 }}>Default Credentials: </span>
-            <code style={{ fontFamily: "monospace", color: "#312e81", fontWeight: 700 }}>Admin / Admin</code>
+            <span style={{ color: "#818cf8", fontWeight: 700 }}>Default Admin Credentials: </span>
+            <code style={{ fontFamily: "monospace", color: "#38bdf8", fontWeight: 800 }}>Admin / Admin</code>
           </div>
           <button
             type="button"
-            onClick={() => {
-              setEmail("Admin");
-              setPassword("Admin");
-            }}
+            onClick={() => handleQuickLogin("Admin", "Admin")}
             style={{
-              background: "#4f46e5",
+              background: "linear-gradient(135deg, #4f46e5, #4338ca)",
               color: "white",
               border: "none",
-              padding: "4px 10px",
-              borderRadius: 6,
-              fontSize: 11.5,
-              fontWeight: 600,
-              cursor: "pointer"
+              padding: "6px 14px",
+              borderRadius: 8,
+              fontSize: "0.82rem",
+              fontWeight: 700,
+              cursor: "pointer",
+              boxShadow: "0 4px 12px rgba(79, 70, 229, 0.4)"
             }}
           >
-            Auto-Fill
+            ⚡ Instant Admin Login
           </button>
         </div>
 

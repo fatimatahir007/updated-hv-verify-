@@ -29,6 +29,16 @@ async def results(
     election_id: str = None,
     db: AsyncSession = Depends(get_db)
 ):
+    if not election_id:
+        from app.models import Election
+        from app.routes.election_routes import _compute_status
+        elec_res = await db.execute(select(Election).order_by(Election.created_at.desc()))
+        all_elecs = elec_res.scalars().all()
+        for e in all_elecs:
+            if _compute_status(e) == "Active":
+                election_id = str(e.election_id)
+                break
+
     candidate_query = select(Candidate)
     if election_id:
         try:

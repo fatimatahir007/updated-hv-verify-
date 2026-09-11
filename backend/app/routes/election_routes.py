@@ -79,6 +79,13 @@ async def get_all_elections(db: AsyncSession = Depends(get_db)):
     for e in elections:
         computed = _compute_status(e)
         if e.status != computed:
+            # If transitioning to Active, reset voters to unvoted state with fresh biometrics
+            if computed == "Active" and e.status == "Upcoming":
+                try:
+                    from sqlalchemy import text
+                    await db.execute(text("UPDATE voters SET has_voted = FALSE, voted_at = NULL, face_embedding = NULL, is_verified = FALSE"))
+                except Exception:
+                    pass
             e.status = computed
             db.add(e)
             changed = True
@@ -158,7 +165,29 @@ async def create_election(payload: ElectionCreate, db: AsyncSession = Depends(ge
         db.add(new_election)
         await db.commit()
         
-    await db.refresh(new_election)
+    # If new election is active, close older active elections for complete isolation
+    if _compute_status(new_election) == "Active":
+        try:
+            from sqlalchemy import update
+            now_dt = datetime.now(timezone.utc)
+            await db.execute(
+                update(Election)
+                .where(Election.election_id != new_election.election_id)
+                .where(Election.status == "Active")
+                .values(status="Closed", end_time=now_dt - timedelta(minutes=1))
+            )
+            await db.commit()
+        except Exception:
+            pass
+
+    # Reset voters to unvoted state with fresh biometric / liveness verification requirement
+    try:
+        from sqlalchemy import text
+        await db.execute(text("UPDATE voters SET has_voted = FALSE, voted_at = NULL, face_embedding = NULL, is_verified = FALSE"))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+
     new_election.status = _compute_status(new_election)
     return new_election
 
@@ -198,6 +227,20 @@ async def start_election_now(election_id: uuid.UUID, db: AsyncSession = Depends(
     election.end_time = now + timedelta(days=7)
     election.status = "Active"
     
+    # Reset all voters so they can vote fresh in this new election with fresh biometric verification
+    try:
+        from sqlalchemy import text, update
+        # Close other active elections
+        await db.execute(
+            update(Election)
+            .where(Election.election_id != election_id)
+            .where(Election.status == "Active")
+            .values(status="Closed", end_time=now - timedelta(minutes=1))
+        )
+        await db.execute(text("UPDATE voters SET has_voted = FALSE, voted_at = NULL, face_embedding = NULL, is_verified = FALSE"))
+    except Exception:
+        pass
+
     db.add(election)
     await db.commit()
     await db.refresh(election)

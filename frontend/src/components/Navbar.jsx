@@ -2,12 +2,11 @@ import { Link } from "react-router-dom";
 import {
   ShieldCheck,
   Home,
-  UserPlus,
-  LogIn,
   Vote,
   BadgeCheck,
   BarChart3,
   Settings,
+  IdCard
 } from "lucide-react";
 import { useLang } from "../context/LangContext";
 
@@ -22,25 +21,13 @@ function Navbar() {
           <span className="brand-icon">
             <ShieldCheck size={18} />
           </span>
-
           <span className="brand-text">HVS-STE</span>
-         
         </Link>
 
         <div className="nav-links">
           <Link className="nav-link" to="/">
             <Home size={16} />
             {t.home}
-          </Link>
-
-          <Link className="nav-link" to="/activate">
-            <UserPlus size={16} />
-            Register / Activate
-          </Link>
-
-          <Link className="nav-link" to="/auth">
-            <LogIn size={16} />
-            Voter Login
           </Link>
 
           <Link className="nav-link" to="/vote">
@@ -53,13 +40,11 @@ function Navbar() {
             {t.verify}
           </Link>
 
-          {/* Results sab users ko show hoga */}
           <Link className="nav-link" to="/results">
             <BarChart3 size={16} />
             {t.results}
           </Link>
 
-          {/* Admin link login status ke mutabiq change hoga */}
           {isAdmin ? (
             <Link className="nav-link" to="/admin">
               <Settings size={16} />

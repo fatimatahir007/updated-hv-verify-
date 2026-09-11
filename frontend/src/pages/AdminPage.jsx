@@ -306,6 +306,22 @@ function ReportsTab({ token }) {
         let districts = extractArray(districtsRes);
         let candidates = extractArray(candidatesRes);
 
+        // Map real vote counts to each candidate
+        const candVoteCounts = {};
+        votes.forEach(vt => {
+          const cid = String(vt.encrypted_vote || vt.candidate_id || vt.candidate || "").trim();
+          if (cid) candVoteCounts[cid] = (candVoteCounts[cid] || 0) + 1;
+        });
+
+        candidates = candidates.map(c => {
+          const cid = String(c.id || c.candidate_id || "").trim();
+          const counted = candVoteCounts[cid] !== undefined ? candVoteCounts[cid] : (typeof c.votes === 'number' ? c.votes : 0);
+          return {
+            ...c,
+            votes: counted
+          };
+        });
+
         // Robust fallback data if database endpoints return empty for test environment
         if (voters.length === 0) {
           voters = [
@@ -2056,13 +2072,7 @@ function AdminPage() {
           <span className="mobile-header-title">Admin Command Center</span>
         </header>
 
-        {/* Desktop Header */}
-        <div className="page-header admin-header-content">
-          <div className="eyebrow"><ShieldCheck size={16} />Administration</div>
-          <div className="admin-title-row">
-            <h1 className="section-title">Election command center</h1>
-          </div>
-        </div>
+        {/* Desktop Header Removed as requested */}
 
         <div className="admin-tab-content">
 

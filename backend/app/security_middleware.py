@@ -42,11 +42,16 @@ vote_limiter     = RateLimiter(max_calls=100, period=3600)
 register_limiter = RateLimiter(max_calls=100, period=3600)
 
 
-def get_client_ip(request: Request) -> str:
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else "unknown"
+def get_client_ip(request: Request = None) -> str:
+    if not request:
+        return "127.0.0.1"
+    try:
+        forwarded = request.headers.get("X-Forwarded-For") if hasattr(request, "headers") else None
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+        return request.client.host if getattr(request, "client", None) else "127.0.0.1"
+    except Exception:
+        return "127.0.0.1"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -121,12 +126,13 @@ def validate_registration(data):
 # AUDIT LOG HELPER
 # ─────────────────────────────────────────────────────────────
 
-from app.models import AuditLog
-
-async def audit(db, action: str, details: str, severity: str = "info"):
+async def audit(db, action: str, details: str, severity: str = "info", ip_address: str = None, **kwargs):
     try:
-        log = AuditLog(action=action, details=details, severity=severity, timestamp=datetime.utcnow())
+        from app.models import AuditLog
+        log_details = f"[{ip_address}] {details}" if ip_address else details
+        log = AuditLog(action=action, details=log_details, severity=severity, timestamp=datetime.utcnow())
         db.add(log)
         await db.commit()
     except Exception as e:
+        await db.rollback()
         print(f"[Audit] Failed to log: {e}")

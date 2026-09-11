@@ -56,6 +56,8 @@ class VoteSchema(BaseModel):
     voter_id: Optional[str] = None
     candidate_id: Union[int, str]
     polling_station_id: Optional[str] = None
+    face_image: Optional[str] = None
+
 
 
 class DashboardSummaryResponse(BaseModel):

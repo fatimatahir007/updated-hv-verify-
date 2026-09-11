@@ -6,6 +6,7 @@ import API from "../api";
 import { LivenessDetector } from "../services/livenessDetector";
 import { useLang } from "../context/LangContext";
 import { captureFrameFromVideo } from "../services/faceCapture";
+import FaceVerification from "../components/FaceVerification";
 
 // ─────────────────────────────────────────────────────────────
 // Liveness steps config — matches the existing UI steps exactly
@@ -122,38 +123,36 @@ function RegisterPage() {
   // VERIFICATION HELPERS  (unchanged API)
   // =====================================
 
+  const [showFaceVerification, setShowFaceVerification] = useState(false);
+
   const openVerification = () => {
     if (loading) return;
-    // Feature flag: Bypass liveness detection if not explicitly enabled
-    const livenessEnabled = import.meta.env.VITE_ENABLE_LIVENESS === "true";
-    if (!livenessEnabled) {
-      console.log("[Liveness Bypass] Feature flag VITE_ENABLE_LIVENESS is disabled. Registering voter directly.");
-      register(null).then((registeredVoterId) => {
-        if (registeredVoterId) {
-          navigate("/vote", {
-            state: {
-              voterId: registeredVoterId,
-              voterDistrict: formData.constituency,
-            },
-          });
-        }
-      });
+    if (!formData.full_name || !formData.cnic || !formData.phone || !formData.constituency) {
+      toast.error("Please fill in all required registration fields first.");
       return;
     }
-    setVerification({
-      open: true,
-      step: 0,
-      checking: false,
-      cameraReady: false,
-      cameraError: "",
-      aiLoading: false,
-      aiError: "",
-      stepDone: false,
-      faceChecking: false,
-      faceError: "",
-    });
-    // Auto-start camera immediately
-    setTimeout(() => requestCamera(), 100);
+    setShowFaceVerification(true);
+  };
+
+  const handleLivenessComplete = async ({ session_id, face_image }) => {
+    setShowFaceVerification(false);
+    setLoading(true);
+    try {
+      const registeredVoterId = await register(face_image, session_id);
+      if (registeredVoterId) {
+        toast.success("Voter registered and biometrics saved successfully!");
+        navigate("/vote", {
+          state: {
+            voterId: registeredVoterId,
+            voterDistrict: formData.constituency,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Liveness completion error:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const closeVerification = useCallback(() => {
@@ -195,52 +194,17 @@ function RegisterPage() {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         await new Promise((res) => {
-          videoRef.current.onloadedmetadata = res;
+          if (videoRef.current.readyState >= 1) res();
+          else videoRef.current.onloadedmetadata = res;
         });
+        await videoRef.current.play().catch(() => {});
       }
 
-      // Camera ready — wait 2s for video to stream, then check face
+      // Camera ready — start AI detection immediately
       setVerification((prev) => ({
         ...prev,
         checking: false,
         cameraReady: true,
-        faceChecking: true,
-      }));
-
-      // Wait for video to fully stream (3 seconds)
-      await new Promise((res) => setTimeout(res, 3000));
-
-      // Wait for video to be fully ready
-      await new Promise((res) => {
-        const vid = videoRef.current;
-        const check = () => {
-          if (vid && vid.readyState >= 3 && vid.videoWidth > 0) res();
-          else setTimeout(check, 200);
-        };
-        check();
-      });
-
-      // Extra buffer for stable frame
-      await new Promise((res) => setTimeout(res, 1000));
-
-      const frame = captureFrameFromVideo(videoRef.current);
-      try {
-        const checkRes = await API.post("/check-face", { face_image: frame });
-        if (checkRes.data.exists) {
-          setVerification((prev) => ({
-            ...prev,
-            faceChecking: false,
-            faceError: checkRes.data.message,
-          }));
-          return;
-        }
-      } catch (e) {
-        console.warn("Face check failed, proceeding:", e);
-      }
-
-      // Face not found — start liveness
-      setVerification((prev) => ({
-        ...prev,
         faceChecking: false,
         step: 1,
         aiLoading: true,
@@ -255,7 +219,7 @@ function RegisterPage() {
         ...prev,
         checking: false,
         cameraError:
-          "Camera permission was denied. You can still continue with demo verification.",
+          "Camera permission was denied. Please allow camera access in your browser.",
       }));
     }
   };
@@ -997,12 +961,16 @@ function RegisterPage() {
               )}
 
             </div>
-
           </div>
-
         </div>
       )}
 
+      {showFaceVerification && (
+        <FaceVerification 
+          onVerified={handleLivenessComplete} 
+          onCancel={() => setShowFaceVerification(false)} 
+        />
+      )}
     </>
 
   );

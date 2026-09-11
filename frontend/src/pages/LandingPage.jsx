@@ -243,7 +243,7 @@ export default function LandingPage() {
           flexWrap: "wrap", marginBottom: 60,
           animation: "fadeUp 0.6s 0.3s ease both",
         }}>
-          <Link to="/auth" style={{
+          <Link to="/vote" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             background: "linear-gradient(135deg, #0f766e, #0ea5a5)",
             color: "#fff", padding: "16px 32px", borderRadius: 14,
@@ -254,7 +254,7 @@ export default function LandingPage() {
             onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.boxShadow = "0 12px 32px rgba(15,118,110,0.4)"; }}
             onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 8px 24px rgba(15,118,110,0.3)"; }}
           >
-            Register to vote <ArrowRight size={18} />
+            Enter CNIC to Vote <ArrowRight size={18} />
           </Link>
           <Link to="/vote" style={{
             display: "inline-flex", alignItems: "center", gap: 8,
